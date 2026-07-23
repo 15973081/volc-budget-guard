@@ -10,8 +10,8 @@ class BillingProvider(ABC):
 class MockBillingProvider(BillingProvider):
     def list_split_bill_details(self, billing_cycle: str) -> list[dict[str, Any]]:
         return [
-            {"CostID":"mock-1", "BillPeriod":billing_cycle, "ProjectID":"project-a", "PayableAmount":"9600.00", "InstanceNo":"i-a", "ProductZh":"云服务器"},
-            {"CostID":"mock-2", "BillPeriod":billing_cycle, "ProjectID":"project-b", "PayableAmount":"5100.00", "InstanceNo":"i-b", "ProductZh":"对象存储"},
+            {"SplitBillDetailId":"mock-1", "BillPeriod":billing_cycle, "Project":"project-a", "PayableAmount":"9600.00", "Currency":"CNY", "InstanceNo":"i-a", "ProductZh":"云服务器"},
+            {"SplitBillDetailId":"mock-2", "BillPeriod":billing_cycle, "Project":"project-b", "PayableAmount":"5100.00", "Currency":"CNY", "InstanceNo":"i-b", "ProductZh":"对象存储"},
         ]
 
 class VolcBillingProvider(BillingProvider):
@@ -52,8 +52,15 @@ def payable_amount(row: dict[str, Any]) -> Decimal:
     return Decimal(str(row.get("PayableAmount") or row.get("PaidAmount") or "0"))
 
 def project_id(row: dict[str, Any]) -> str:
-    return str(row.get("ProjectID") or row.get("ProjectId") or row.get("Project") or "UNASSIGNED")
+    return str(row.get("Project") or row.get("ProjectID") or row.get("ProjectId") or "UNASSIGNED")
+
+def currency(row: dict[str, Any]) -> str:
+    return str(row.get("Currency") or "").upper()
 
 def unique_key(row: dict[str, Any], billing_cycle: str = "") -> str:
-    fields = [row.get("BillPeriod") or billing_cycle, row.get("CostID"), row.get("BillDetailId"), row.get("BillID"), row.get("InstanceNo"), row.get("ProjectID"), row.get("AmortizedDay")]
+    fields = [row.get("BillPeriod") or billing_cycle, row.get("SplitBillDetailId"), row.get("BillDetailId"), row.get("CostID"), row.get("BillID"), row.get("InstanceNo"), project_id(row), row.get("AmortizedDay")]
+    return "|".join(str(v or "") for v in fields)
+
+def legacy_unique_key(row: dict[str, Any]) -> str:
+    fields = [row.get("CostID"), row.get("BillDetailId"), row.get("BillID"), row.get("InstanceNo"), row.get("ProjectID"), row.get("AmortizedDay")]
     return "|".join(str(v or "") for v in fields)

@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from sqlalchemy import select
 from budget_guard.db import SessionLocal, BillDetail, EnforcementEvent, AppliedState
-from budget_guard.adapters.billing import BillingProvider, payable_amount, project_id, unique_key
+from budget_guard.adapters.billing import BillingProvider, currency, legacy_unique_key, payable_amount, project_id, unique_key
 from budget_guard.adapters.limiter import Limiter
 from budget_guard.services.budgets import load_budgets, budget_window, decide_state
 from budget_guard.config import settings
@@ -16,26 +16,34 @@ STATE_PRIORITY = {
     EnforcementState.THROTTLED: 2,
     EnforcementState.BLOCKED: 3,
 }
-PERIOD_PRIORITY = {"monthly": 0, "quarterly": 1, "yearly": 2, "lifetime": 3}
+PERIOD_PRIORITY = {"monthly": 0, "quarterly": 1, "yearly": 2, "total": 3}
 
 class BillingPoller:
     def __init__(self, billing: BillingProvider, limiter: Limiter):
         self.billing, self.limiter = billing, limiter
 
-    def run_once(self, billing_cycle: str | None = None) -> dict[str, str]:
+    def run_once(self, billing_cycle: str | None = None) -> dict[str, dict[str, str]]:
         current_cycle = datetime.now().strftime("%Y-%m")
         cycle = billing_cycle or current_cycle
+        budgets = load_budgets(settings.budget_config_path)
+        by_project = {budget.volc_project: budget for budget in budgets.values()}
         rows = self.billing.list_split_bill_details(cycle)
         with SessionLocal.begin() as db:
             for row in rows:
+                pid = project_id(row)
+                subsidiary = by_project.get(pid)
+                if subsidiary and currency(row) != subsidiary.currency:
+                    raise ValueError(
+                        f"currency mismatch for {pid}: expected {subsidiary.currency}, got {currency(row) or 'missing'}"
+                    )
                 key = unique_key(row, cycle)
                 existing = db.scalar(select(BillDetail).where(BillDetail.unique_key == key))
                 if not existing:
-                    legacy_key = key.partition("|")[2]
+                    legacy_key = legacy_unique_key(row)
                     existing = db.scalar(select(BillDetail).where(BillDetail.unique_key == legacy_key))
                     if existing:
                         existing.unique_key = key
-                values = dict(billing_cycle=cycle, project_id=project_id(row), amount=payable_amount(row),
+                values = dict(billing_cycle=cycle, project_id=pid, amount=payable_amount(row),
                               resource_id=str(row.get("InstanceNo") or ""), product=str(row.get("ProductZh") or row.get("Product") or ""),
                               raw_json=json.dumps(row, ensure_ascii=False))
                 if existing:
@@ -51,12 +59,12 @@ class BillingPoller:
             ):
                 totals[pid, bill_cycle] += Decimal(str(amount))
 
-        budgets = load_budgets(settings.budget_config_path)
-        states: dict[str, str] = {}
+        states: dict[str, dict[str, str]] = {}
         with SessionLocal.begin() as db:
-            for pid, budget in budgets.items():
+            for subsidiary_id, budget in budgets.items():
                 if not budget.enabled:
                     continue
+                pid = budget.volc_project
                 evaluations = []
                 for period, limit in budget.budgets.items():
                     window_key, start_cycle = budget_window(period, cycle, budget.project_start_date)
@@ -72,7 +80,11 @@ class BillingPoller:
                 state, _, period, window_key, amount, limit = max(
                     evaluations, key=lambda item: (STATE_PRIORITY[item[0]], item[1])
                 )
-                states[pid] = state.value
+                states[subsidiary_id] = {
+                    "company_name": budget.company_name,
+                    "volc_project": pid,
+                    "state": state.value,
+                }
                 if cycle != current_cycle:
                     continue
                 applied = db.get(AppliedState, pid)
@@ -97,6 +109,9 @@ class BillingPoller:
                             project_id=pid, billing_cycle=event_cycle, state=state.value,
                             amount=amount, budget=limit.amount,
                             detail=json.dumps({
+                                "subsidiary_id": subsidiary_id,
+                                "company_name": budget.company_name,
+                                "volc_project": pid,
                                 "budget_type": period,
                                 "window_key": window_key,
                                 "ratio": str(amount / limit.amount),

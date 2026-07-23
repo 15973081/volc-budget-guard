@@ -17,16 +17,12 @@ class BudgetLimit:
     block_ratio: Decimal
 
 @dataclass(frozen=True)
-class ProjectBudget:
-    project_id: str
-    name: str
+class SubsidiaryBudget:
+    subsidiary_id: str
+    company_name: str
+    volc_project: str
+    currency: str
     budgets: dict[str, BudgetLimit]
     throttle_rps: int
     enabled: bool = True
     project_start_date: date | None = None
-
-@dataclass(frozen=True)
-class ProjectSpend:
-    project_id: str
-    billing_cycle: str
-    amount: Decimal

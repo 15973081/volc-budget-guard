@@ -1,53 +1,39 @@
-projects:
-  project-a:
-    name: 客户A
+subsidiaries:
+  company-a:
+    company_name: 子公司A
+    volc_project: project-a
+    currency: CNY
     project_start_date: "2026-01-01"
+    warning_ratio: "0.80"
+    throttle_ratio: "0.95"
+    block_ratio: "1.00"
     budgets:
       monthly:
         amount: "10000.00"
-        warning_ratio: "0.80"
-        throttle_ratio: "0.95"
-        block_ratio: "1.00"
       quarterly:
         amount: "28000.00"
-        warning_ratio: "0.80"
-        throttle_ratio: "0.95"
-        block_ratio: "1.00"
       yearly:
         amount: "100000.00"
-        warning_ratio: "0.80"
-        throttle_ratio: "0.95"
-        block_ratio: "1.00"
-      lifetime:
+      total:
         amount: "150000.00"
-        warning_ratio: "0.80"
-        throttle_ratio: "0.95"
-        block_ratio: "1.00"
     throttle_rps: 2
     enabled: true
-  project-b:
-    name: 客户B
+  company-b:
+    company_name: 子公司B
+    volc_project: project-b
+    currency: CNY
     project_start_date: "2026-01-01"
+    warning_ratio: "0.80"
+    throttle_ratio: "0.90"
+    block_ratio: "1.00"
     budgets:
       monthly:
         amount: "5000.00"
-        warning_ratio: "0.80"
-        throttle_ratio: "0.90"
-        block_ratio: "1.00"
       quarterly:
         amount: "14000.00"
-        warning_ratio: "0.80"
-        throttle_ratio: "0.90"
-        block_ratio: "1.00"
       yearly:
         amount: "50000.00"
-        warning_ratio: "0.80"
-        throttle_ratio: "0.90"
-        block_ratio: "1.00"
-      lifetime:
+      total:
         amount: "75000.00"
-        warning_ratio: "0.80"
-        throttle_ratio: "0.90"
-        block_ratio: "1.00"
     throttle_rps: 1
     enabled: true

@@ -1,3 +1,4 @@
+import json
 from fastapi import FastAPI, HTTPException
 from sqlalchemy import select
 from budget_guard.db import init_db, SessionLocal, EnforcementEvent
@@ -26,8 +27,14 @@ def events(limit: int = 100):
         result = []
         for row in rows:
             budget_type, separator, window_key = row.billing_cycle.partition(":")
+            try:
+                detail = json.loads(row.detail)
+            except (json.JSONDecodeError, TypeError):
+                detail = {}
             result.append({
-                "project_id": row.project_id,
+                "subsidiary_id": detail.get("subsidiary_id"),
+                "company_name": detail.get("company_name"),
+                "volc_project": detail.get("volc_project", row.project_id),
                 "budget_type": budget_type if separator else "monthly",
                 "window_key": window_key if separator else budget_type,
                 "state": row.state,

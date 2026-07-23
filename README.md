@@ -1,41 +1,47 @@
 # Volc Budget Guard
 
-## 预算周期
+## 子公司按项目分账
 
-每个项目可同时配置 `monthly`、`quarterly`、`yearly` 和 `lifetime`。系统会从已同步到本地数据库的账单中分别累计四种周期，并采用最严格的状态执行限流。
+每个子公司映射一个火山引擎 `Project`。系统读取分账明细的 `Project`、`PayableAmount` 和 `Currency`，按子公司累计 `monthly`、`quarterly`、`yearly` 和 `total` 四种预算，并采用最严格的状态执行限流。
 
 ```yaml
-projects:
-  project-a:
+subsidiaries:
+  company-a:
+    company_name: 子公司A
+    volc_project: project-a
+    currency: CNY
     project_start_date: "2026-01-01"
+    warning_ratio: "0.80"
+    throttle_ratio: "0.95"
+    block_ratio: "1.00"
     budgets:
       monthly:
         amount: "10000.00"
-        warning_ratio: "0.80"
-        throttle_ratio: "0.95"
-        block_ratio: "1.00"
       quarterly:
         amount: "28000.00"
-        warning_ratio: "0.80"
-        throttle_ratio: "0.95"
-        block_ratio: "1.00"
       yearly:
         amount: "100000.00"
-        warning_ratio: "0.80"
-        throttle_ratio: "0.95"
-        block_ratio: "1.00"
-      lifetime:
+      total:
         amount: "150000.00"
-        warning_ratio: "0.80"
-        throttle_ratio: "0.95"
-        block_ratio: "1.00"
     throttle_rps: 2
     enabled: true
 ```
 
-首次启用季度、年度或生命周期预算时，请依次执行 `budget-guard poll --billing-cycle YYYY-MM` 回填所需历史月份。历史账期只同步数据，不执行限流；回填后再轮询当前账期进行预算判断。
+`company-a` 是内部子公司标识，`volc_project` 必须与账单实际返回的 `Project` 完全一致。一个火山项目不能同时分配给多个子公司；币种不匹配会中止轮询，避免错误累加。
 
-按火山引擎项目分账账单轮询，并在项目达到预算阈值时调用你方网关进行预警、限流或封禁。
+首次启用季度、年度或总预算时，请依次执行 `budget-guard poll --billing-cycle YYYY-MM` 回填所需历史月份。历史账期只同步数据，不执行限流；回填后再轮询当前账期进行预算判断。
+
+处理链路：`火山 Project → 子公司 → 周期预算 → warning / throttled / blocked → 业务网关`。
+
+## 代码结构
+
+```text
+domain/models.py       子公司预算与状态模型
+adapters/billing.py    火山分账字段适配
+services/budgets.py    子公司配置、周期窗口与阈值
+services/poller.py     Project 汇总和限流编排
+api/main.py            轮询与事件查询接口
+```
 
 ## 安全设计
 
