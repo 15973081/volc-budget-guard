@@ -1,0 +1,8 @@
+services:
+  budget-guard:
+    build: .
+    env_file: .env
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data
+    restart: unless-stopped

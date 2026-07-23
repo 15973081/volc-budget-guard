@@ -1,0 +1,17 @@
+Metadata-Version: 2.4
+Name: volc-budget-guard
+Version: 0.1.0
+Summary: Project-level cloud billing polling and budget enforcement
+Requires-Python: >=3.11
+Requires-Dist: fastapi<1,>=0.115
+Requires-Dist: uvicorn[standard]<1,>=0.30
+Requires-Dist: sqlalchemy<3,>=2.0
+Requires-Dist: pydantic-settings<3,>=2.5
+Requires-Dist: httpx<1,>=0.27
+Requires-Dist: apscheduler<4,>=3.10
+Requires-Dist: python-dateutil<3,>=2.9
+Requires-Dist: typer<1,>=0.12
+Requires-Dist: PyYAML<7,>=6
+Provides-Extra: dev
+Requires-Dist: pytest<9,>=8; extra == "dev"
+Requires-Dist: ruff<1,>=0.6; extra == "dev"

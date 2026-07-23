@@ -1,0 +1,13 @@
+fastapi<1,>=0.115
+uvicorn[standard]<1,>=0.30
+sqlalchemy<3,>=2.0
+pydantic-settings<3,>=2.5
+httpx<1,>=0.27
+apscheduler<4,>=3.10
+python-dateutil<3,>=2.9
+typer<1,>=0.12
+PyYAML<7,>=6
+
+[dev]
+pytest<9,>=8
+ruff<1,>=0.6
