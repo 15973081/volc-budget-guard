@@ -1,5 +1,40 @@
 # Volc Budget Guard
 
+## 预算周期
+
+每个项目可同时配置 `monthly`、`quarterly`、`yearly` 和 `lifetime`。系统会从已同步到本地数据库的账单中分别累计四种周期，并采用最严格的状态执行限流。
+
+```yaml
+projects:
+  project-a:
+    project_start_date: "2026-01-01"
+    budgets:
+      monthly:
+        amount: "10000.00"
+        warning_ratio: "0.80"
+        throttle_ratio: "0.95"
+        block_ratio: "1.00"
+      quarterly:
+        amount: "28000.00"
+        warning_ratio: "0.80"
+        throttle_ratio: "0.95"
+        block_ratio: "1.00"
+      yearly:
+        amount: "100000.00"
+        warning_ratio: "0.80"
+        throttle_ratio: "0.95"
+        block_ratio: "1.00"
+      lifetime:
+        amount: "150000.00"
+        warning_ratio: "0.80"
+        throttle_ratio: "0.95"
+        block_ratio: "1.00"
+    throttle_rps: 2
+    enabled: true
+```
+
+首次启用季度、年度或生命周期预算时，请依次执行 `budget-guard poll --billing-cycle YYYY-MM` 回填所需历史月份。历史账期只同步数据，不执行限流；回填后再轮询当前账期进行预算判断。
+
 按火山引擎项目分账账单轮询，并在项目达到预算阈值时调用你方网关进行预警、限流或封禁。
 
 ## 安全设计
@@ -19,7 +54,7 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
 budget-guard init
-budget-guard poll 2026-07
+budget-guard poll --billing-cycle 2026-07
 uvicorn budget_guard.api.main:app --reload
 ```
 

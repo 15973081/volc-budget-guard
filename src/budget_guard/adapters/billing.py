@@ -1,6 +1,5 @@
 import json
 from abc import ABC, abstractmethod
-from datetime import date
 from decimal import Decimal
 from typing import Any
 
@@ -55,6 +54,6 @@ def payable_amount(row: dict[str, Any]) -> Decimal:
 def project_id(row: dict[str, Any]) -> str:
     return str(row.get("ProjectID") or row.get("ProjectId") or row.get("Project") or "UNASSIGNED")
 
-def unique_key(row: dict[str, Any]) -> str:
-    fields = [row.get("CostID"), row.get("BillDetailId"), row.get("BillID"), row.get("InstanceNo"), row.get("ProjectID"), row.get("AmortizedDay")]
+def unique_key(row: dict[str, Any], billing_cycle: str = "") -> str:
+    fields = [row.get("BillPeriod") or billing_cycle, row.get("CostID"), row.get("BillDetailId"), row.get("BillID"), row.get("InstanceNo"), row.get("ProjectID"), row.get("AmortizedDay")]
     return "|".join(str(v or "") for v in fields)
