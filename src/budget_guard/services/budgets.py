@@ -1,10 +1,14 @@
 from decimal import Decimal
 from datetime import date
+import os
 from pathlib import Path
+import tempfile
+from threading import Lock
 import yaml
 from budget_guard.domain.models import BudgetLimit, SubsidiaryBudget, EnforcementState
 
 PERIODS = ("monthly", "quarterly", "yearly", "total")
+_config_write_lock = Lock()
 
 def _load_limit(item: dict) -> BudgetLimit:
     limit = BudgetLimit(
@@ -69,6 +73,28 @@ def load_budgets(path: Path) -> dict[str, SubsidiaryBudget]:
             project_start_date=date.fromisoformat(str(start)) if start else None,
         )
     return result
+
+def read_budget_config(path: Path) -> dict:
+    return yaml.safe_load(path.read_text(encoding="utf-8")) or {"subsidiaries": {}}
+
+def save_budget_config(path: Path, data: dict) -> None:
+    if not isinstance(data, dict) or not isinstance(data.get("subsidiaries"), dict):
+        raise ValueError("configuration must contain a subsidiaries object")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # ponytail: process-local lock; use shared storage if multi-worker writes are needed.
+    with _config_write_lock:
+        temporary_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w", encoding="utf-8", dir=path.parent, suffix=".yaml", delete=False
+            ) as temporary:
+                yaml.safe_dump(data, temporary, allow_unicode=True, sort_keys=False)
+                temporary_path = Path(temporary.name)
+            load_budgets(temporary_path)
+            os.replace(temporary_path, path)
+        finally:
+            if temporary_path and temporary_path.exists():
+                temporary_path.unlink()
 
 def budget_window(period: str, cycle: str, project_start_date: date | None = None) -> tuple[str, str]:
     year, month = map(int, cycle.split("-"))

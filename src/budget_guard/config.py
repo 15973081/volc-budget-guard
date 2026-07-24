@@ -17,5 +17,6 @@ class Settings(BaseSettings):
     limiter_webhook_url: str = "http://localhost:9000/internal/projects/{project_id}/access"
     limiter_webhook_token: str = ""
     alert_webhook_url: str = ""
+    config_api_token: str = ""
 
 settings = Settings()

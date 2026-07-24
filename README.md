@@ -68,6 +68,9 @@ uvicorn budget_guard.api.main:app --reload
 - `GET /health`
 - `POST /poll?billing_cycle=2026-07`
 - `GET /events`
+- `GET /admin`（预算配置网页）
+
+配置网页需要在 `.env` 设置 `CONFIG_API_TOKEN`。启动 API 后访问 `/admin`，输入令牌即可新增、修改或删除子公司预算；保存时会先执行与轮询相同的配置校验，再原子替换 `budgets.yaml`。
 
 ## 接入真实火山账单
 

@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Budget Guard · 子公司预算配置</title>
+  <style>
+    :root {
+      --ink: #17211c;
+      --muted: #68736c;
+      --paper: #f3f1e9;
+      --panel: #fffefa;
+      --line: #dcded6;
+      --green: #1f6b4f;
+      --green-soft: #e0eee7;
+      --amber: #e39b39;
+      --danger: #aa3f3f;
+      --shadow: 0 16px 42px rgba(33, 48, 39, .09);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 6% 2%, rgba(227, 155, 57, .13), transparent 28rem),
+        var(--paper);
+      font: 15px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible, select:focus-visible {
+      outline: 3px solid rgba(31, 107, 79, .23);
+      outline-offset: 2px;
+    }
+
+    .topbar {
+      min-height: 72px;
+      padding: 14px clamp(18px, 4vw, 54px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      color: white;
+      background: #17251e;
+      border-bottom: 3px solid var(--amber);
+    }
+    .brand { display: flex; align-items: center; gap: 13px; }
+    .mark {
+      width: 40px; height: 40px; display: grid; place-items: center;
+      border-radius: 12px; color: #14231b; background: var(--amber);
+      font-weight: 900; letter-spacing: -.08em;
+    }
+    .brand strong { display: block; font-size: 16px; letter-spacing: .02em; }
+    .brand span { display: block; color: #adc0b4; font-size: 12px; }
+    .auth { display: flex; align-items: center; gap: 9px; }
+    .auth input {
+      width: min(290px, 38vw);
+      padding: 10px 12px;
+      color: white; background: rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.18); border-radius: 9px;
+    }
+    .auth input::placeholder { color: #9caf9f; }
+
+    .btn {
+      border: 0; border-radius: 9px; padding: 10px 15px;
+      color: white; background: var(--green); font-weight: 700;
+    }
+    .btn:hover { filter: brightness(1.07); }
+    .btn-light { color: var(--ink); background: white; }
+    .btn-ghost { color: var(--green); background: var(--green-soft); }
+    .btn-danger { color: var(--danger); background: #f6e7e5; }
+
+    .page { width: min(1440px, 94vw); margin: 28px auto 48px; }
+    .intro { display: flex; align-items: end; justify-content: space-between; gap: 20px; }
+    h1 { margin: 0; font: 700 clamp(28px, 4vw, 44px)/1.05 Georgia, serif; letter-spacing: -.035em; }
+    .intro p { max-width: 560px; margin: 9px 0 0; color: var(--muted); }
+    .connection {
+      padding: 8px 12px; border-radius: 99px;
+      color: #7b5921; background: #f7e8cb; font-size: 13px; font-weight: 750;
+    }
+    .connection.online { color: var(--green); background: var(--green-soft); }
+
+    .stats {
+      display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px; margin: 24px 0 16px;
+    }
+    .stat {
+      padding: 17px 19px; background: rgba(255,255,255,.62);
+      border: 1px solid rgba(220,222,214,.85); border-radius: 14px;
+    }
+    .stat span { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+    .stat strong { display: block; margin-top: 5px; font-size: 24px; }
+
+    .workspace {
+      display: grid; grid-template-columns: 285px minmax(0, 1fr);
+      min-height: 620px; overflow: hidden;
+      background: var(--panel); border: 1px solid var(--line); border-radius: 18px;
+      box-shadow: var(--shadow);
+    }
+    .sidebar { padding: 18px; background: #f7f6f0; border-right: 1px solid var(--line); }
+    .side-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 13px; }
+    .side-head strong { font-size: 13px; letter-spacing: .04em; }
+    .icon-btn {
+      width: 34px; height: 34px; border: 0; border-radius: 9px;
+      color: white; background: var(--green); font-size: 20px; line-height: 1;
+    }
+    .search {
+      width: 100%; padding: 10px 12px; margin-bottom: 12px;
+      border: 1px solid var(--line); border-radius: 9px; background: white;
+    }
+    .company-list { display: grid; gap: 7px; }
+    .company {
+      width: 100%; padding: 12px; display: grid; grid-template-columns: 35px 1fr;
+      gap: 10px; text-align: left; border: 1px solid transparent;
+      border-radius: 11px; color: var(--ink); background: transparent;
+    }
+    .company:hover { background: white; }
+    .company.active { border-color: #b9d2c4; background: var(--green-soft); }
+    .avatar {
+      width: 35px; height: 35px; display: grid; place-items: center;
+      border-radius: 9px; color: white; background: var(--green);
+      font: 700 15px Georgia, serif;
+    }
+    .company b, .company small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .company small { color: var(--muted); margin-top: 2px; }
+    .empty-list { padding: 24px 10px; color: var(--muted); text-align: center; }
+
+    .editor { padding: clamp(20px, 3vw, 38px); }
+    .editor-empty { min-height: 500px; display: grid; place-items: center; color: var(--muted); text-align: center; }
+    .editor-head { display: flex; align-items: start; justify-content: space-between; gap: 18px; margin-bottom: 28px; }
+    .editor-head h2 { margin: 0 0 5px; font: 700 27px/1.1 Georgia, serif; }
+    .editor-head p { margin: 0; color: var(--muted); }
+    .section { padding-top: 23px; margin-top: 23px; border-top: 1px solid var(--line); }
+    .section:first-of-type { padding-top: 0; margin-top: 0; border-top: 0; }
+    .section-title { margin: 0 0 14px; font-size: 13px; text-transform: uppercase; letter-spacing: .09em; }
+    .fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; }
+    .field label { display: block; margin-bottom: 6px; color: #49534d; font-size: 13px; font-weight: 700; }
+    .field input, .field select {
+      width: 100%; padding: 11px 12px;
+      border: 1px solid var(--line); border-radius: 9px; background: white;
+    }
+    .field input:focus, .field select:focus { border-color: #78a68d; }
+    .hint { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; }
+    .switch-line { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+    .switch-line p { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
+    .switch { width: 48px; height: 27px; position: relative; flex: 0 0 auto; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .switch span { position: absolute; inset: 0; border-radius: 99px; background: #c9cdc8; transition: .2s; }
+    .switch span::after {
+      content: ""; position: absolute; width: 21px; height: 21px; left: 3px; top: 3px;
+      border-radius: 50%; background: white; box-shadow: 0 2px 5px rgba(0,0,0,.18); transition: .2s;
+    }
+    .switch input:checked + span { background: var(--green); }
+    .switch input:checked + span::after { transform: translateX(21px); }
+
+    .budget-grid { display: grid; grid-template-columns: repeat(4, minmax(125px, 1fr)); gap: 10px; }
+    .budget-card { padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: #fafaf6; }
+    .budget-card strong { display: block; margin-bottom: 9px; font-size: 13px; }
+    .money { display: flex; align-items: center; gap: 7px; }
+    .money span { color: var(--muted); font-size: 12px; }
+    .money input { width: 100%; min-width: 0; padding: 9px; border: 1px solid var(--line); border-radius: 8px; background: white; }
+
+    .savebar {
+      position: sticky; bottom: 14px; z-index: 2;
+      margin-top: 25px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between;
+      border: 1px solid #cbd8d0; border-radius: 12px; background: rgba(244,250,246,.95);
+      box-shadow: 0 9px 26px rgba(33, 48, 39, .12); backdrop-filter: blur(10px);
+    }
+    .savebar span { color: var(--muted); font-size: 13px; }
+    .save-actions { display: flex; gap: 8px; }
+    .toast {
+      position: fixed; right: 22px; bottom: 22px; z-index: 10;
+      max-width: 390px; padding: 13px 16px; border-radius: 10px;
+      color: white; background: #24342a; box-shadow: var(--shadow);
+      opacity: 0; transform: translateY(12px); pointer-events: none; transition: .2s;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.error { background: var(--danger); }
+
+    @media (max-width: 920px) {
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .workspace { grid-template-columns: 1fr; }
+      .sidebar { border-right: 0; border-bottom: 1px solid var(--line); }
+      .company-list { display: flex; overflow-x: auto; }
+      .company { min-width: 210px; }
+      .budget-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 620px) {
+      .topbar, .intro, .editor-head, .savebar { align-items: stretch; flex-direction: column; }
+      .auth { width: 100%; }
+      .auth input { width: 100%; }
+      .page { width: min(100% - 24px, 1440px); margin-top: 20px; }
+      .stats, .fields { grid-template-columns: 1fr; }
+      .budget-grid { grid-template-columns: 1fr; }
+      .save-actions { width: 100%; }
+      .save-actions button { flex: 1; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark">BG</div>
+      <div><strong>Budget Guard Console</strong><span>子公司预算配置中心</span></div>
+    </div>
+    <div class="auth">
+      <input id="token" type="password" autocomplete="off" aria-label="配置访问令牌" placeholder="输入 CONFIG_API_TOKEN">
+      <button class="btn btn-light" id="load">连接</button>
+    </div>
+  </header>
+
+  <main class="page">
+    <section class="intro">
+      <div>
+        <h1>把预算守在项目入口。</h1>
+        <p>维护子公司与火山 Project 的一对一映射，配置周期额度，并在保存前完成服务端校验。</p>
+      </div>
+      <div class="connection" id="connection">等待连接</div>
+    </section>
+
+    <section class="stats" aria-label="配置概览">
+      <div class="stat"><span>子公司</span><strong id="statCompanies">—</strong></div>
+      <div class="stat"><span>已启用</span><strong id="statEnabled">—</strong></div>
+      <div class="stat"><span>火山项目</span><strong id="statProjects">—</strong></div>
+      <div class="stat"><span>月预算合计</span><strong id="statMonthly">—</strong></div>
+    </section>
+
+    <section class="workspace">
+      <aside class="sidebar">
+        <div class="side-head"><strong>子公司列表</strong><button class="icon-btn" id="add" aria-label="新增子公司">+</button></div>
+        <input class="search" id="search" type="search" placeholder="搜索公司或 Project">
+        <div class="company-list" id="companyList"></div>
+      </aside>
+
+      <div class="editor">
+        <div class="editor-empty" id="empty"><div><strong>先连接配置服务</strong><br>输入访问令牌后加载现有配置</div></div>
+        <form id="form" hidden>
+          <div class="editor-head">
+            <div><h2 id="editorTitle">子公司配置</h2><p>所有金额都按配置币种计算。</p></div>
+            <button class="btn btn-danger" type="button" id="remove">删除子公司</button>
+          </div>
+
+          <section class="section">
+            <h3 class="section-title">归属关系</h3>
+            <div class="fields">
+              <div class="field">
+                <label for="subsidiaryId">内部子公司 ID</label>
+                <input id="subsidiaryId" required pattern="[A-Za-z0-9._-]+" placeholder="company-a">
+                <span class="hint">仅允许字母、数字、点、下划线和短横线</span>
+              </div>
+              <div class="field">
+                <label for="companyName">子公司名称</label>
+                <input id="companyName" required placeholder="子公司A">
+              </div>
+              <div class="field">
+                <label for="volcProject">火山 Project</label>
+                <input id="volcProject" required placeholder="project-a">
+                <span class="hint">必须与分账账单返回的 Project 完全一致</span>
+              </div>
+              <div class="field">
+                <label for="currency">币种</label>
+                <select id="currency"><option>CNY</option><option>USD</option></select>
+              </div>
+              <div class="field">
+                <label for="startDate">累计起始日</label>
+                <input id="startDate" type="date">
+              </div>
+              <div class="field">
+                <label for="throttleRps">限流后 RPS</label>
+                <input id="throttleRps" type="number" min="1" step="1" required>
+              </div>
+            </div>
+          </section>
+
+          <section class="section">
+            <h3 class="section-title">公共阈值</h3>
+            <div class="fields">
+              <div class="field"><label for="warningRatio">预警比例</label><input id="warningRatio" type="number" min="0" step="0.01" required></div>
+              <div class="field"><label for="throttleRatio">限流比例</label><input id="throttleRatio" type="number" min="0" step="0.01" required></div>
+              <div class="field"><label for="blockRatio">封禁比例</label><input id="blockRatio" type="number" min="0" step="0.01" required></div>
+            </div>
+          </section>
+
+          <section class="section">
+            <h3 class="section-title">预算金额</h3>
+            <div class="budget-grid">
+              <div class="budget-card"><strong>月预算</strong><div class="money"><span>金额</span><input id="monthly" type="number" min="0.01" step="0.01" placeholder="不启用"></div></div>
+              <div class="budget-card"><strong>季度预算</strong><div class="money"><span>金额</span><input id="quarterly" type="number" min="0.01" step="0.01" placeholder="不启用"></div></div>
+              <div class="budget-card"><strong>年度预算</strong><div class="money"><span>金额</span><input id="yearly" type="number" min="0.01" step="0.01" placeholder="不启用"></div></div>
+              <div class="budget-card"><strong>累计总预算</strong><div class="money"><span>金额</span><input id="total" type="number" min="0.01" step="0.01" placeholder="不启用"></div></div>
+            </div>
+          </section>
+
+          <section class="section switch-line">
+            <div><strong>启用预算保护</strong><p>关闭后仍保留配置，但不会参与预算判断。</p></div>
+            <label class="switch"><input id="enabled" type="checkbox"><span></span></label>
+          </section>
+
+          <div class="savebar">
+            <span id="saveState">配置已加载</span>
+            <div class="save-actions">
+              <button class="btn btn-ghost" type="button" id="reload">放弃更改</button>
+              <button class="btn" type="submit">保存全部配置</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    const periodIds = ["monthly", "quarterly", "yearly", "total"];
+    let config = { subsidiaries: {} };
+    let selectedId = null;
+    let dirty = false;
+
+    function authHeaders() {
+      return { "Authorization": `Bearer ${$("token").value}`, "Content-Type": "application/json" };
+    }
+    function notify(message, error = false) {
+      const toast = $("toast");
+      toast.textContent = message;
+      toast.className = `toast show${error ? " error" : ""}`;
+      clearTimeout(notify.timer);
+      notify.timer = setTimeout(() => toast.className = "toast", 2800);
+    }
+    async function parseResponse(response) {
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.detail || `请求失败 (${response.status})`);
+      return body;
+    }
+    function markDirty() {
+      dirty = true;
+      $("saveState").textContent = "有未保存的更改";
+    }
+    function amount(value) {
+      const number = Number(value || 0);
+      return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(number);
+    }
+    function updateSummary() {
+      const items = Object.values(config.subsidiaries || {});
+      $("statCompanies").textContent = items.length;
+      $("statEnabled").textContent = items.filter(item => item.enabled !== false).length;
+      $("statProjects").textContent = new Set(items.map(item => item.volc_project).filter(Boolean)).size;
+      const monthly = items.reduce((sum, item) => sum + Number(item.budgets?.monthly?.amount || 0), 0);
+      $("statMonthly").textContent = monthly ? `¥ ${amount(monthly)}` : "—";
+    }
+    function renderList() {
+      const list = $("companyList");
+      const query = $("search").value.trim().toLowerCase();
+      list.replaceChildren();
+      const entries = Object.entries(config.subsidiaries || {}).filter(([id, item]) =>
+        `${id} ${item.company_name || ""} ${item.volc_project || ""}`.toLowerCase().includes(query)
+      );
+      if (!entries.length) {
+        const empty = document.createElement("div");
+        empty.className = "empty-list";
+        empty.textContent = "没有匹配的子公司";
+        list.append(empty);
+        return;
+      }
+      for (const [id, item] of entries) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `company${id === selectedId ? " active" : ""}`;
+        const avatar = document.createElement("span");
+        avatar.className = "avatar";
+        avatar.textContent = (item.company_name || id).slice(0, 1).toUpperCase();
+        const text = document.createElement("span");
+        const name = document.createElement("b");
+        name.textContent = item.company_name || id;
+        const project = document.createElement("small");
+        project.textContent = item.volc_project || "未绑定 Project";
+        text.append(name, project);
+        button.append(avatar, text);
+        button.addEventListener("click", () => selectCompany(id));
+        list.append(button);
+      }
+    }
+    function setValue(id, value = "") { $(id).value = value ?? ""; }
+    function renderForm() {
+      const item = config.subsidiaries?.[selectedId];
+      $("empty").hidden = Boolean(item);
+      $("form").hidden = !item;
+      if (!item) return;
+      $("editorTitle").textContent = item.company_name || selectedId;
+      setValue("subsidiaryId", selectedId);
+      setValue("companyName", item.company_name || item.name);
+      setValue("volcProject", item.volc_project || selectedId);
+      setValue("currency", item.currency || "CNY");
+      setValue("startDate", item.project_start_date);
+      setValue("throttleRps", item.throttle_rps ?? 1);
+      setValue("warningRatio", item.warning_ratio ?? "0.80");
+      setValue("throttleRatio", item.throttle_ratio ?? "0.95");
+      setValue("blockRatio", item.block_ratio ?? "1.00");
+      for (const period of periodIds) {
+        const budget = period === "total" ? item.budgets?.total || item.budgets?.lifetime : item.budgets?.[period];
+        setValue(period, budget?.amount);
+      }
+      $("enabled").checked = item.enabled !== false;
+      dirty = false;
+      $("saveState").textContent = "配置已加载";
+    }
+    function syncForm() {
+      if (!selectedId || $("form").hidden) return;
+      if (!$("form").reportValidity()) throw new Error("请先补全必填项");
+      const nextId = $("subsidiaryId").value.trim();
+      if (!/^[A-Za-z0-9._-]+$/.test(nextId)) throw new Error("子公司 ID 格式不正确");
+      if (nextId !== selectedId && config.subsidiaries[nextId]) throw new Error("子公司 ID 已存在");
+      const budgets = {};
+      for (const period of periodIds) {
+        const value = $(period).value.trim();
+        const existing = period === "total"
+          ? config.subsidiaries[selectedId].budgets?.total || config.subsidiaries[selectedId].budgets?.lifetime
+          : config.subsidiaries[selectedId].budgets?.[period];
+        if (value) budgets[period] = { ...(existing || {}), amount: value };
+      }
+      if (!Object.keys(budgets).length) throw new Error("至少配置一种预算金额");
+      const item = {
+        ...config.subsidiaries[selectedId],
+        company_name: $("companyName").value.trim(),
+        volc_project: $("volcProject").value.trim(),
+        currency: $("currency").value,
+        project_start_date: $("startDate").value,
+        warning_ratio: $("warningRatio").value,
+        throttle_ratio: $("throttleRatio").value,
+        block_ratio: $("blockRatio").value,
+        budgets,
+        throttle_rps: Number($("throttleRps").value),
+        enabled: $("enabled").checked
+      };
+      if (!item.project_start_date) delete item.project_start_date;
+      if (nextId !== selectedId) {
+        delete config.subsidiaries[selectedId];
+        selectedId = nextId;
+      }
+      config.subsidiaries[selectedId] = item;
+      $("editorTitle").textContent = item.company_name;
+      renderList();
+      updateSummary();
+    }
+    function selectCompany(id) {
+      try {
+        if (dirty) syncForm();
+        selectedId = id;
+        renderList();
+        renderForm();
+      } catch (error) {
+        notify(error.message, true);
+      }
+    }
+    async function loadConfig() {
+      if (!$("token").value) return notify("请输入配置访问令牌", true);
+      try {
+        const response = await fetch("/api/config", { headers: authHeaders() });
+        config = await parseResponse(response);
+        let migrated = false;
+        if (!config.subsidiaries && config.projects) {
+          config.subsidiaries = Object.fromEntries(Object.entries(config.projects).map(([id, item]) => [
+            id, { ...item, company_name: item.company_name || item.name || id, volc_project: item.volc_project || id }
+          ]));
+          delete config.projects;
+          migrated = true;
+        }
+        config.subsidiaries ||= {};
+        selectedId = Object.keys(config.subsidiaries)[0] || null;
+        $("connection").textContent = "已连接";
+        $("connection").className = "connection online";
+        renderList();
+        renderForm();
+        updateSummary();
+        if (migrated) markDirty();
+        notify(migrated ? "旧配置已转换，请保存" : "配置已加载");
+      } catch (error) {
+        $("connection").textContent = "连接失败";
+        $("connection").className = "connection";
+        notify(error.message, true);
+      }
+    }
+    async function saveConfig(event) {
+      event.preventDefault();
+      try {
+        syncForm();
+        const projects = Object.values(config.subsidiaries).map(item => item.volc_project);
+        if (new Set(projects).size !== projects.length) throw new Error("一个火山 Project 不能分配给多个子公司");
+        const response = await fetch("/api/config", {
+          method: "PUT", headers: authHeaders(), body: JSON.stringify(config)
+        });
+        await parseResponse(response);
+        dirty = false;
+        $("saveState").textContent = "刚刚保存";
+        notify("配置保存成功");
+      } catch (error) {
+        notify(error.message, true);
+      }
+    }
+
+    $("load").addEventListener("click", loadConfig);
+    $("token").addEventListener("keydown", event => { if (event.key === "Enter") loadConfig(); });
+    $("search").addEventListener("input", renderList);
+    $("form").addEventListener("submit", saveConfig);
+    $("form").addEventListener("input", markDirty);
+    $("form").addEventListener("change", markDirty);
+    $("reload").addEventListener("click", loadConfig);
+    $("add").addEventListener("click", () => {
+      try {
+        if (dirty) syncForm();
+        let index = Object.keys(config.subsidiaries).length + 1;
+        let id = `company-${index}`;
+        while (config.subsidiaries[id]) id = `company-${++index}`;
+        config.subsidiaries[id] = {
+          company_name: `新子公司 ${index}`, volc_project: `project-${index}`, currency: "CNY",
+          warning_ratio: "0.80", throttle_ratio: "0.95", block_ratio: "1.00",
+          budgets: { monthly: { amount: "10000.00" } }, throttle_rps: 1, enabled: true
+        };
+        selectedId = id;
+        renderList();
+        renderForm();
+        markDirty();
+      } catch (error) {
+        notify(error.message, true);
+      }
+    });
+    $("remove").addEventListener("click", () => {
+      if (!selectedId || !confirm(`确认删除 ${config.subsidiaries[selectedId].company_name || selectedId}？`)) return;
+      delete config.subsidiaries[selectedId];
+      selectedId = Object.keys(config.subsidiaries)[0] || null;
+      renderList();
+      renderForm();
+      updateSummary();
+      markDirty();
+    });
+  </script>
+</body>
+</html>

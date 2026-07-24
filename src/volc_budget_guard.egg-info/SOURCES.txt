@@ -9,6 +9,7 @@ src/budget_guard/adapters/__init__.py
 src/budget_guard/adapters/billing.py
 src/budget_guard/adapters/limiter.py
 src/budget_guard/api/__init__.py
+src/budget_guard/api/admin.html
 src/budget_guard/api/main.py
 src/budget_guard/domain/__init__.py
 src/budget_guard/domain/models.py

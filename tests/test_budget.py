@@ -1,8 +1,17 @@
 from decimal import Decimal
 from datetime import date
+from fastapi.testclient import TestClient
 from budget_guard.adapters.billing import currency, project_id, unique_key
+from budget_guard.api.main import app
+from budget_guard.config import settings
 from budget_guard.domain.models import BudgetLimit, EnforcementState
-from budget_guard.services.budgets import budget_window, decide_state, load_budgets
+from budget_guard.services.budgets import (
+    budget_window,
+    decide_state,
+    load_budgets,
+    read_budget_config,
+    save_budget_config,
+)
 
 B = BudgetLimit(Decimal("100"), Decimal("0.8"), Decimal("0.95"), Decimal("1"))
 
@@ -46,3 +55,48 @@ def test_official_bill_fields():
     assert project_id(row) == "project-a"
     assert currency(row) == "CNY"
     assert "detail-1" in unique_key(row)
+
+def test_config_save_is_validated_and_atomic(tmp_path):
+    path = tmp_path / "budgets.yaml"
+    valid = {
+        "subsidiaries": {
+            "company-a": {
+                "company_name": "子公司A",
+                "volc_project": "project-a",
+                "currency": "CNY",
+                "budgets": {"monthly": {"amount": "100"}},
+            }
+        }
+    }
+    save_budget_config(path, valid)
+    assert read_budget_config(path) == valid
+
+    invalid = {"subsidiaries": {"company-a": {"budgets": {}}}}
+    try:
+        save_budget_config(path, invalid)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("invalid configuration was accepted")
+    assert read_budget_config(path) == valid
+
+def test_admin_config_api(tmp_path, monkeypatch):
+    path = tmp_path / "budgets.yaml"
+    payload = {
+        "subsidiaries": {
+            "company-a": {
+                "volc_project": "project-a",
+                "budgets": {"monthly": {"amount": "100"}},
+            }
+        }
+    }
+    save_budget_config(path, payload)
+    monkeypatch.setattr(settings, "budget_config_path", path)
+    monkeypatch.setattr(settings, "config_api_token", "test-token")
+    client = TestClient(app)
+
+    assert client.get("/admin").status_code == 200
+    assert client.get("/api/config").status_code == 401
+    headers = {"Authorization": "Bearer test-token"}
+    assert client.get("/api/config", headers=headers).json() == payload
+    assert client.put("/api/config", headers=headers, json=payload).json() == {"status": "saved"}
