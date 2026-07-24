@@ -69,6 +69,7 @@ def load_budgets(path: Path) -> dict[str, SubsidiaryBudget]:
         )
         disable_keys = bool(control.get("disable_iam_access_keys_on_block", False))
         iam_user_name = str(control.get("iam_user_name") or "").strip()
+        block_gateway = bool(control.get("block_gateway_on_block", False))
         if disable_keys and (not iam_user_name or not access_key_ids):
             raise ValueError(
                 f"subsidiary {subsidiary_id} requires iam_user_name and iam_access_key_ids"
@@ -86,6 +87,7 @@ def load_budgets(path: Path) -> dict[str, SubsidiaryBudget]:
                 disable_iam_access_keys_on_block=disable_keys,
                 iam_user_name=iam_user_name,
                 iam_access_key_ids=access_key_ids,
+                block_gateway_on_block=block_gateway,
             ),
         )
     return result

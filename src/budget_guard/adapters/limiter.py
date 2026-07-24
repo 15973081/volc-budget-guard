@@ -56,9 +56,11 @@ class VolcLimiter(Limiter):
     def __init__(
         self, access_key: str, secret_key: str, region: str,
         ark_endpoint: str, iam_endpoint: str, dry_run: bool = True,
+        gateway_url: str = "", gateway_token: str = "",
     ):
         self.api = VolcOpenAPI(access_key, secret_key, region)
         self.ark_endpoint, self.iam_endpoint, self.dry_run = ark_endpoint, iam_endpoint, dry_run
+        self.gateway = WebhookLimiter(gateway_url, gateway_token, dry_run)
 
     def _ark(self, action: str, body: dict) -> dict:
         return self.api.request(
@@ -103,6 +105,10 @@ class VolcLimiter(Limiter):
                 for item in self._list_endpoints(budget.volc_project)
             ],
             "access_keys": access_keys,
+            "gateway": {
+                "project": budget.volc_project,
+                "configured": bool(self.gateway.url_template),
+            },
         }
 
     def set_endpoints(
@@ -162,6 +168,16 @@ class VolcLimiter(Limiter):
                 )
         return changed
 
+    def set_gateway(
+        self, budget: SubsidiaryBudget, enabled: bool, track: bool = False
+    ) -> list[str]:
+        if not self.gateway.url_template:
+            raise ValueError("LIMITER_WEBHOOK_URL is not configured")
+        (self.gateway.set_normal if enabled else self.gateway.block)(budget)
+        if track and not enabled and not self.dry_run:
+            self._record(budget.volc_project, "ark_gateway", budget.volc_project)
+        return [budget.volc_project]
+
     def _record(
         self, project: str, resource_type: str, resource_id: str, detail: dict | None = None
     ) -> None:
@@ -179,11 +195,14 @@ class VolcLimiter(Limiter):
 
     def block(self, budget: SubsidiaryBudget) -> None:
         project, control = budget.volc_project, budget.control
+        if control.block_gateway_on_block and not self.gateway.url_template:
+            raise ValueError("LIMITER_WEBHOOK_URL is not configured")
         if self.dry_run:
             print(
                 f"DRY_RUN volc block project={project} "
                 f"stop_endpoints={control.stop_endpoints_on_block} "
-                f"disable_iam_keys={control.disable_iam_access_keys_on_block}"
+                f"disable_iam_keys={control.disable_iam_access_keys_on_block} "
+                f"block_gateway={control.block_gateway_on_block}"
             )
         if control.stop_endpoints_on_block:
             self.set_endpoints(project, False, track=True)
@@ -192,6 +211,8 @@ class VolcLimiter(Limiter):
                 control.iam_user_name, control.iam_access_key_ids,
                 False, track_project=project,
             )
+        if control.block_gateway_on_block:
+            self.set_gateway(budget, False, track=True)
 
     def set_normal(self, budget: SubsidiaryBudget) -> None:
         project = budget.volc_project
@@ -212,6 +233,8 @@ class VolcLimiter(Limiter):
                     "AccessKeyId": resource.resource_id,
                     "Status": "active",
                 })
+            elif resource.resource_type == "ark_gateway":
+                self.set_gateway(budget, True)
             with SessionLocal.begin() as db:
                 row = db.get(ControlledResource, resource.id)
                 if row:

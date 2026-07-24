@@ -18,5 +18,7 @@ def limiter_provider():
         return VolcLimiter(
             settings.volc_access_key, settings.volc_secret_key, settings.volc_region,
             settings.volc_ark_endpoint, settings.volc_iam_endpoint, settings.dry_run,
+            settings.limiter_webhook_url,
+            settings.limiter_webhook_token,
         )
     raise RuntimeError(f"unsupported LIMITER_PROVIDER: {settings.limiter_provider}")

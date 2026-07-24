@@ -28,6 +28,7 @@ subsidiaries:
       disable_iam_access_keys_on_block: false
       iam_user_name: ""
       iam_access_key_ids: []
+      block_gateway_on_block: false
     throttle_rps: 2
     enabled: true
 ```
@@ -112,7 +113,25 @@ VOLC_REGION=cn-beijing
 
 需要同时限制 IAM 子账号时，再开启 `disable_iam_access_keys_on_block`，填写 IAM 用户名和 Access Key ID。这里只保存子账号 AK，不保存子账号 SK。主账号需要具有方舟 Endpoint 管理权限，以及启用 IAM 管控时所需的 Access Key 查询和状态更新权限。
 
-确认演练日志和项目映射无误后，将 `DRY_RUN=false` 并重启服务，才会执行真实停止和恢复。`throttled` 只记录状态；如需按 RPS 限流，仍可改用 `LIMITER_PROVIDER=webhook` 并配置 `LIMITER_WEBHOOK_URL` 接入自有网关。
+确认演练日志和项目映射无误后，将 `DRY_RUN=false` 并重启服务，才会执行真实停止和恢复。
+
+### 方舟调用网关
+
+普通方舟 API Key 没有公开的禁用 OpenAPI。需要实时止损时，不要把方舟 API Key 交给子公司；由自有网关保存方舟 API Key，并给每个子公司签发独立网关令牌。
+
+```env
+LIMITER_PROVIDER=volc
+LIMITER_WEBHOOK_URL=https://gateway.example.com/internal/projects/{project_id}/access
+LIMITER_WEBHOOK_TOKEN=replace-with-a-strong-token
+```
+
+网关接收 `PUT` JSON：
+
+```json
+{"state": "blocked", "rps": 0}
+```
+
+`state` 为 `normal`、`throttled` 或 `blocked`，项目由 URL 中的 `{project_id}` 指定。开启 `block_gateway_on_block` 后，预算超额会自动封禁该 Project，恢复预算时重新放行；页面也支持手动操作。`DRY_RUN=true` 时只记录预计动作。
 
 ## 生产增强
 

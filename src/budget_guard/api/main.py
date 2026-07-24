@@ -84,7 +84,7 @@ def control_status(subsidiary_id: str, authorization: str = Header(default="")):
 @app.post("/api/control/{subsidiary_id}/{resource}")
 def update_control(
     subsidiary_id: str,
-    resource: Literal["endpoints", "iam", "all"],
+    resource: Literal["endpoints", "iam", "gateway", "all"],
     enabled: bool,
     authorization: str = Header(default=""),
 ):
@@ -102,6 +102,11 @@ def update_control(
                 raise ValueError("IAM user name and access key IDs are required")
         if resource in ("endpoints", "all"):
             changed.extend(limiter.set_endpoints(budget.volc_project, enabled))
+        if resource in ("gateway", "all"):
+            if limiter.gateway.url_template:
+                changed.extend(limiter.set_gateway(budget, enabled))
+            elif resource == "gateway":
+                raise ValueError("LIMITER_WEBHOOK_URL is not configured")
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     return {

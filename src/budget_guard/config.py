@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     volc_iam_endpoint: str = "https://iam.volcengineapi.com"
     volc_region: str = "cn-north-1"
     limiter_provider: str = "volc"
-    limiter_webhook_url: str = "http://localhost:9000/internal/projects/{project_id}/access"
+    limiter_webhook_url: str = ""
     limiter_webhook_token: str = ""
     alert_webhook_url: str = ""
     config_api_token: str = ""
