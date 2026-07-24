@@ -16,7 +16,9 @@ class BillDetail(Base):
     resource_id: Mapped[str] = mapped_column(String(256), default="")
     product: Mapped[str] = mapped_column(String(128), default="")
     raw_json: Mapped[str] = mapped_column(Text)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
+    )
 
 class EnforcementEvent(Base):
     __tablename__ = "enforcement_events"
@@ -38,6 +40,20 @@ class AppliedState(Base):
     window_key: Mapped[str] = mapped_column(String(16))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
+    )
+
+class ControlledResource(Base):
+    __tablename__ = "controlled_resources"
+    __table_args__ = (
+        UniqueConstraint("project_id", "resource_type", "resource_id", name="uq_controlled_resource"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[str] = mapped_column(String(128), index=True)
+    resource_type: Mapped[str] = mapped_column(String(32))
+    resource_id: Mapped[str] = mapped_column(String(256))
+    detail: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
     )
 
 engine = create_engine(settings.database_url, future=True)

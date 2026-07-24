@@ -1,39 +1,19 @@
 subsidiaries:
-  company-a:
-    company_name: 子公司A
-    volc_project: project-a
+  seedance-companyB:
+    company_name: 火豹
+    volc_project: seedance-companyB
     currency: CNY
-    project_start_date: "2026-01-01"
-    warning_ratio: "0.80"
-    throttle_ratio: "0.95"
-    block_ratio: "1.00"
+    project_start_date: '2026-06-01'
+    warning_ratio: '0.80'
+    throttle_ratio: '0.95'
+    block_ratio: '1.00'
     budgets:
-      monthly:
-        amount: "10000.00"
-      quarterly:
-        amount: "28000.00"
-      yearly:
-        amount: "100000.00"
       total:
-        amount: "150000.00"
-    throttle_rps: 2
-    enabled: true
-  company-b:
-    company_name: 子公司B
-    volc_project: project-b
-    currency: CNY
-    project_start_date: "2026-01-01"
-    warning_ratio: "0.80"
-    throttle_ratio: "0.90"
-    block_ratio: "1.00"
-    budgets:
-      monthly:
-        amount: "5000.00"
-      quarterly:
-        amount: "14000.00"
-      yearly:
-        amount: "50000.00"
-      total:
-        amount: "75000.00"
+        amount: '300000.00'
+    control:
+      stop_endpoints_on_block: true
+      disable_iam_access_keys_on_block: false
+      iam_user_name: ''
+      iam_access_key_ids: []
     throttle_rps: 1
     enabled: true

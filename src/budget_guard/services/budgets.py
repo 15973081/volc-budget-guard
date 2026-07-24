@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 from threading import Lock
 import yaml
-from budget_guard.domain.models import BudgetLimit, SubsidiaryBudget, EnforcementState
+from budget_guard.domain.models import BudgetLimit, ProjectControl, SubsidiaryBudget, EnforcementState
 
 PERIODS = ("monthly", "quarterly", "yearly", "total")
 _config_write_lock = Lock()
@@ -63,6 +63,16 @@ def load_budgets(path: Path) -> dict[str, SubsidiaryBudget]:
         currency = str(item.get("currency", "CNY")).upper()
         if not currency:
             raise ValueError(f"subsidiary {subsidiary_id} must configure a currency")
+        control = item.get("control") or {}
+        access_key_ids = tuple(
+            value.strip() for value in control.get("iam_access_key_ids", []) if value.strip()
+        )
+        disable_keys = bool(control.get("disable_iam_access_keys_on_block", False))
+        iam_user_name = str(control.get("iam_user_name") or "").strip()
+        if disable_keys and (not iam_user_name or not access_key_ids):
+            raise ValueError(
+                f"subsidiary {subsidiary_id} requires iam_user_name and iam_access_key_ids"
+            )
         result[subsidiary_id] = SubsidiaryBudget(
             subsidiary_id=subsidiary_id,
             company_name=item.get("company_name") or item.get("name", subsidiary_id),
@@ -71,6 +81,12 @@ def load_budgets(path: Path) -> dict[str, SubsidiaryBudget]:
             budgets={period: _load_limit(value) for period, value in normalized.items()},
             throttle_rps=int(item.get("throttle_rps", 1)), enabled=bool(item.get("enabled", True)),
             project_start_date=date.fromisoformat(str(start)) if start else None,
+            control=ProjectControl(
+                stop_endpoints_on_block=bool(control.get("stop_endpoints_on_block", False)),
+                disable_iam_access_keys_on_block=disable_keys,
+                iam_user_name=iam_user_name,
+                iam_access_key_ids=access_key_ids,
+            ),
         )
     return result
 

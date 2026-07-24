@@ -17,6 +17,13 @@ class BudgetLimit:
     block_ratio: Decimal
 
 @dataclass(frozen=True)
+class ProjectControl:
+    stop_endpoints_on_block: bool = False
+    disable_iam_access_keys_on_block: bool = False
+    iam_user_name: str = ""
+    iam_access_key_ids: tuple[str, ...] = ()
+
+@dataclass(frozen=True)
 class SubsidiaryBudget:
     subsidiary_id: str
     company_name: str
@@ -26,3 +33,4 @@ class SubsidiaryBudget:
     throttle_rps: int
     enabled: bool = True
     project_start_date: date | None = None
+    control: ProjectControl = ProjectControl()

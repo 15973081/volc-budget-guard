@@ -6,7 +6,7 @@
 
 ```yaml
 subsidiaries:
-  company-a:
+  project-a:
     company_name: 子公司A
     volc_project: project-a
     currency: CNY
@@ -23,21 +23,28 @@ subsidiaries:
         amount: "100000.00"
       total:
         amount: "150000.00"
+    control:
+      stop_endpoints_on_block: true
+      disable_iam_access_keys_on_block: false
+      iam_user_name: ""
+      iam_access_key_ids: []
     throttle_rps: 2
     enabled: true
 ```
 
-`company-a` 是内部子公司标识，`volc_project` 必须与账单实际返回的 `Project` 完全一致。一个火山项目不能同时分配给多个子公司；币种不匹配会中止轮询，避免错误累加。
+配置键直接使用火山 `Project`；`volc_project` 必须与账单返回值完全一致。一个火山项目不能同时分配给多个子公司；币种不匹配会中止轮询，避免错误累加。
 
 首次启用季度、年度或总预算时，请依次执行 `budget-guard poll --billing-cycle YYYY-MM` 回填所需历史月份。历史账期只同步数据，不执行限流；回填后再轮询当前账期进行预算判断。
 
-处理链路：`火山 Project → 子公司 → 周期预算 → warning / throttled / blocked → 业务网关`。
+处理链路：`火山 Project → 子公司 → 周期预算 → blocked → 停止该 Project 下的方舟 Endpoint → 恢复时只启动本系统停止的 Endpoint`。
 
 ## 代码结构
 
 ```text
 domain/models.py       子公司预算与状态模型
 adapters/billing.py    火山分账字段适配
+adapters/volc.py       火山 OpenAPI 签名与请求
+adapters/limiter.py    Endpoint / IAM 自动管控
 services/budgets.py    子公司配置、周期窗口与阈值
 services/poller.py     Project 汇总和限流编排
 api/main.py            轮询与事件查询接口
@@ -46,9 +53,10 @@ api/main.py            轮询与事件查询接口
 ## 安全设计
 
 - 默认 `DRY_RUN=true`，不会实际封禁。
-- 优先限制你方业务入口，不直接删除云资源。
+- 封禁只停止 Endpoint，不删除 Endpoint 或其他云资源。
 - 阈值状态：`normal -> warning -> throttled -> blocked`。
-- 每个账期、项目、状态只执行一次动作，避免重复调用。
+- `blocked` 状态每轮复查，防止新建或人工重启的 Endpoint 绕过封禁。
+- 仅记录并恢复本系统实际停止或禁用的资源，不改动封禁前已停止的资源。
 - 明细使用 upsert，允许账单延迟更新后重新计算。
 - 建议增加“预计消费”指标；分账账单有延迟，单靠账单无法做到实时止损。
 
@@ -61,6 +69,7 @@ python start.py
 ```
 
 首次运行会自动从 `.env.example` 创建 `.env`，并生成配置页面访问令牌。可在 `.env` 中通过 `APP_PORT=8000` 修改端口，打开终端显示的 `/admin` 地址即可。
+服务会按 `POLL_INTERVAL_MINUTES` 自动同步当月账单；配置页也可以选择月份后立即查询。页面金额是最近一次同步结果，火山账单本身可能延迟。
 
 手动启动方式：
 
@@ -76,40 +85,34 @@ uvicorn budget_guard.api.main:app --reload
 
 访问：
 - `GET /health`
-- `POST /poll?billing_cycle=2026-07`
+- `POST /api/poll?billing_cycle=2026-07`
+- `GET /api/bills?billing_cycle=2026-07`
 - `GET /events`
-- `GET /admin`（预算配置网页）
+- `GET /admin`（预算与账单网页）
 
-配置网页需要在 `.env` 设置 `CONFIG_API_TOKEN`。启动 API 后访问 `/admin`，输入令牌即可新增、修改或删除子公司预算；保存时会先执行与轮询相同的配置校验，再原子替换 `budgets.yaml`。
+配置网页和账单 API 需要在 `.env` 设置 `CONFIG_API_TOKEN`。启动 API 后访问 `/admin`，输入令牌即可配置预算并查询账单。
 
 ## 接入真实火山账单
 
-1. 在费用中心 OpenAPI 调试选择 `ListSplitBillDetail`。
-2. 生成 Python SDK 示例。
-3. 将分页调用粘贴到 `src/budget_guard/adapters/billing.py` 的 `_request_page()`。
-4. 设置 `BILLING_PROVIDER=volc` 和 AK/SK。
+设置 `BILLING_PROVIDER=volc`、`VOLC_ACCESS_KEY` 和 `VOLC_SECRET_KEY` 后重启服务。系统已内置 `ListSplitBillDetail` 的签名和分页请求。
 
 请求建议：`BillPeriod`, `Offset`, `Limit<=300`, `NeedRecordNum=1`。账单 API 单账号限流为 5 QPS，轮询应串行并控制频率。
 
-## 接入你方限流系统
+## 启用自动封禁
 
-默认调用：
+`.env` 使用主账号 AK/SK，并保持下面的配置先做演练：
 
-```http
-PUT /internal/projects/{project_id}/access
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{"state":"throttled","rps":2}
+```env
+LIMITER_PROVIDER=volc
+DRY_RUN=true
+VOLC_REGION=cn-beijing
 ```
 
-封禁请求为：
+在配置网页或 `config/budgets.yaml` 中，为子公司开启 `stop_endpoints_on_block`。达到 `blocked` 后，系统会按 `ProjectName` 查询方舟 Endpoint，停止当前运行中的 Endpoint，并记录操作；预算解除后只恢复这些记录中的 Endpoint。
 
-```json
-{"state":"blocked","rps":0}
-```
+需要同时限制 IAM 子账号时，再开启 `disable_iam_access_keys_on_block`，填写 IAM 用户名和 Access Key ID。这里只保存子账号 AK，不保存子账号 SK。主账号需要具有方舟 Endpoint 管理权限，以及启用 IAM 管控时所需的 Access Key 查询和状态更新权限。
 
-将 URL 配置在 `LIMITER_WEBHOOK_URL`。网关应做到幂等，并保留管理员手工解封能力。
+确认演练日志和项目映射无误后，将 `DRY_RUN=false` 并重启服务，才会执行真实停止和恢复。`throttled` 只记录状态；如需按 RPS 限流，仍可改用 `LIMITER_PROVIDER=webhook` 并配置 `LIMITER_WEBHOOK_URL` 接入自有网关。
 
 ## 生产增强
 

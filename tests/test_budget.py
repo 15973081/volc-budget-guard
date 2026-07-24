@@ -1,9 +1,15 @@
 from decimal import Decimal
 from datetime import date
+import json
+import httpx
 from fastapi.testclient import TestClient
-from budget_guard.adapters.billing import currency, project_id, unique_key
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from budget_guard.adapters.billing import VolcBillingProvider, currency, project_id, unique_key
+from budget_guard.api import main as api_main
 from budget_guard.api.main import app
 from budget_guard.config import settings
+from budget_guard.db import Base, BillDetail
 from budget_guard.domain.models import BudgetLimit, EnforcementState
 from budget_guard.services.budgets import (
     budget_window,
@@ -55,6 +61,9 @@ def test_official_bill_fields():
     assert project_id(row) == "project-a"
     assert currency(row) == "CNY"
     assert "detail-1" in unique_key(row)
+    assert unique_key({**row, "SplitItemID": "item-1", "ChargeItemCode": "gpu"}) != unique_key(
+        {**row, "SplitItemID": "item-1", "ChargeItemCode": "storage"}
+    )
 
 def test_config_save_is_validated_and_atomic(tmp_path):
     path = tmp_path / "budgets.yaml"
@@ -95,8 +104,50 @@ def test_admin_config_api(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "config_api_token", "test-token")
     client = TestClient(app)
 
-    assert client.get("/admin").status_code == 200
+    admin = client.get("/admin")
+    assert admin.status_code == 200
+    assert "内部子公司 ID" not in admin.text
+    assert "项目消费金额" in admin.text
     assert client.get("/api/config").status_code == 401
     headers = {"Authorization": "Bearer test-token"}
     assert client.get("/api/config", headers=headers).json() == payload
     assert client.put("/api/config", headers=headers, json=payload).json() == {"status": "saved"}
+
+
+def test_bill_query_and_manual_poll(tmp_path, monkeypatch):
+    engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
+    Base.metadata.create_all(engine)
+    test_session = sessionmaker(engine, expire_on_commit=False)
+    with test_session.begin() as db:
+        db.add(BillDetail(
+            unique_key="test-bill", billing_cycle="2099-01", project_id="project-a",
+            amount=Decimal("12.50"), resource_id="i-1", product="云服务器",
+            raw_json=json.dumps({"Currency": "CNY"}),
+        ))
+    monkeypatch.setattr(api_main, "SessionLocal", test_session)
+    monkeypatch.setattr(api_main, "run_poll", lambda cycle: {"company-a": {"state": "normal"}})
+    monkeypatch.setattr(settings, "config_api_token", "test-token")
+    headers = {"Authorization": "Bearer test-token"}
+    client = TestClient(app)
+
+    bills = client.get("/api/bills?billing_cycle=2099-01", headers=headers).json()
+    assert bills["totals"] == {"CNY": "12.50000000"}
+    result = client.post("/api/poll?billing_cycle=2099-01", headers=headers).json()
+    assert result["states"]["company-a"]["state"] == "normal"
+    assert result["bills"]["count"] == 1
+
+
+def test_volc_billing_request_is_signed(monkeypatch):
+    captured = {}
+
+    def fake_request(method, url, **kwargs):
+        captured.update(method=method, url=url, **kwargs)
+        return httpx.Response(200, json={"Result": {"List": [], "Total": 0}},
+                              request=httpx.Request("POST", url))
+
+    monkeypatch.setattr("budget_guard.adapters.volc.httpx.request", fake_request)
+    provider = VolcBillingProvider("ak", "sk", "https://billing.volcengineapi.com", "cn-north-1")
+    provider._request_page("2026-07", 0, 300)
+
+    assert captured["headers"]["Authorization"].startswith("HMAC-SHA256 Credential=ak/")
+    assert json.loads(captured["content"])["BillPeriod"] == "2026-07"

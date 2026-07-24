@@ -1,6 +1,6 @@
 import json
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from sqlalchemy import select
 from budget_guard.db import SessionLocal, BillDetail, EnforcementEvent, AppliedState
@@ -45,7 +45,7 @@ class BillingPoller:
                         existing.unique_key = key
                 values = dict(billing_cycle=cycle, project_id=pid, amount=payable_amount(row),
                               resource_id=str(row.get("InstanceNo") or ""), product=str(row.get("ProductZh") or row.get("Product") or ""),
-                              raw_json=json.dumps(row, ensure_ascii=False))
+                              raw_json=json.dumps(row, ensure_ascii=False), updated_at=datetime.now(timezone.utc))
                 if existing:
                     for k, v in values.items():
                         setattr(existing, k, v)
@@ -89,15 +89,18 @@ class BillingPoller:
                     continue
                 applied = db.get(AppliedState, pid)
                 changed = applied is None or applied.state != state.value
-                if changed:
-                    if state == EnforcementState.BLOCKED:
-                        self.limiter.block(pid)
-                    elif state == EnforcementState.THROTTLED:
-                        self.limiter.throttle(pid, budget.throttle_rps)
+                # Keep blocked projects reconciled on every poll. This catches
+                # endpoints or keys that were created or re-enabled meanwhile.
+                if state == EnforcementState.BLOCKED:
+                    self.limiter.block(budget)
+                elif changed:
+                    if state == EnforcementState.THROTTLED:
+                        self.limiter.throttle(budget)
                     elif state == EnforcementState.NORMAL or (
                         applied and applied.state in (EnforcementState.THROTTLED, EnforcementState.BLOCKED)
                     ):
-                        self.limiter.set_normal(pid)
+                        self.limiter.set_normal(budget)
+                if changed:
                     event_cycle = f"{period}:{window_key}"
                     exists = db.scalar(select(EnforcementEvent).where(
                         EnforcementEvent.project_id == pid,

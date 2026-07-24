@@ -92,6 +92,21 @@
     .stat span { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
     .stat strong { display: block; margin-top: 5px; font-size: 24px; }
 
+    .billing {
+      margin: 0 0 16px; padding: 18px; background: var(--panel);
+      border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow);
+    }
+    .billing-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .billing-head h2 { margin: 0; font: 700 21px/1.1 Georgia, serif; }
+    .billing-head p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .billing-actions { display: flex; align-items: center; gap: 8px; }
+    .billing-actions input { padding: 9px 10px; border: 1px solid var(--line); border-radius: 9px; }
+    .table-wrap { margin-top: 15px; overflow: auto; max-height: 330px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+    th { position: sticky; top: 0; background: var(--panel); color: var(--muted); }
+    td.amount { font-variant-numeric: tabular-nums; font-weight: 700; }
+
     .workspace {
       display: grid; grid-template-columns: 285px minmax(0, 1fr);
       min-height: 620px; overflow: hidden;
@@ -136,10 +151,11 @@
     .section-title { margin: 0 0 14px; font-size: 13px; text-transform: uppercase; letter-spacing: .09em; }
     .fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; }
     .field label { display: block; margin-bottom: 6px; color: #49534d; font-size: 13px; font-weight: 700; }
-    .field input, .field select {
+    .field input, .field select, .field textarea {
       width: 100%; padding: 11px 12px;
       border: 1px solid var(--line); border-radius: 9px; background: white;
     }
+    .field textarea { min-height: 88px; resize: vertical; }
     .field input:focus, .field select:focus { border-color: #78a68d; }
     .hint { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; }
     .switch-line { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
@@ -187,7 +203,7 @@
       .budget-grid { grid-template-columns: repeat(2, 1fr); }
     }
     @media (max-width: 620px) {
-      .topbar, .intro, .editor-head, .savebar { align-items: stretch; flex-direction: column; }
+      .topbar, .intro, .editor-head, .savebar, .billing-head { align-items: stretch; flex-direction: column; }
       .auth { width: 100%; }
       .auth input { width: 100%; }
       .page { width: min(100% - 24px, 1440px); margin-top: 20px; }
@@ -195,6 +211,7 @@
       .budget-grid { grid-template-columns: 1fr; }
       .save-actions { width: 100%; }
       .save-actions button { flex: 1; }
+      .billing-actions { align-items: stretch; flex-direction: column; }
     }
   </style>
 </head>
@@ -223,7 +240,24 @@
       <div class="stat"><span>子公司</span><strong id="statCompanies">—</strong></div>
       <div class="stat"><span>已启用</span><strong id="statEnabled">—</strong></div>
       <div class="stat"><span>火山项目</span><strong id="statProjects">—</strong></div>
-      <div class="stat"><span>月预算合计</span><strong id="statMonthly">—</strong></div>
+      <div class="stat"><span>所选月份消费</span><strong id="statSpend">—</strong></div>
+    </section>
+
+    <section class="billing" aria-label="消费账单">
+      <div class="billing-head">
+        <div><h2>消费账单</h2><p id="billStatus">连接后显示最近一次同步金额；火山账单可能存在延迟。</p></div>
+        <div class="billing-actions">
+          <input id="billingCycle" type="month" aria-label="账单月份">
+          <button class="btn btn-ghost" id="refreshBills" type="button">刷新显示</button>
+          <button class="btn" id="pollBills" type="button">立即查询账单</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Project</th><th>项目消费金额</th><th>最近同步</th></tr></thead>
+          <tbody id="billRows"><tr><td colspan="3">暂无账单数据</td></tr></tbody>
+        </table>
+      </div>
     </section>
 
     <section class="workspace">
@@ -244,11 +278,6 @@
           <section class="section">
             <h3 class="section-title">归属关系</h3>
             <div class="fields">
-              <div class="field">
-                <label for="subsidiaryId">内部子公司 ID</label>
-                <input id="subsidiaryId" required pattern="[A-Za-z0-9._-]+" placeholder="company-a">
-                <span class="hint">仅允许字母、数字、点、下划线和短横线</span>
-              </div>
               <div class="field">
                 <label for="companyName">子公司名称</label>
                 <input id="companyName" required placeholder="子公司A">
@@ -292,6 +321,28 @@
             </div>
           </section>
 
+          <section class="section">
+            <h3 class="section-title">达到封禁阈值后的控制</h3>
+            <div class="fields">
+              <div class="field">
+                <label for="stopEndpoints">停止该 Project 下的推理接入点</label>
+                <select id="stopEndpoints"><option value="true">启用</option><option value="false">关闭</option></select>
+              </div>
+              <div class="field">
+                <label for="disableIamKeys">同时禁用 IAM Access Key</label>
+                <select id="disableIamKeys"><option value="false">关闭</option><option value="true">启用</option></select>
+              </div>
+              <div class="field">
+                <label for="iamUserName">IAM 用户名</label>
+                <input id="iamUserName" placeholder="subcompanyA_user">
+              </div>
+              <div class="field">
+                <label for="iamAccessKeys">IAM Access Key ID</label>
+                <textarea id="iamAccessKeys" placeholder="每行一个 AKLT...；不填写 Secret Access Key"></textarea>
+              </div>
+            </div>
+          </section>
+
           <section class="section switch-line">
             <div><strong>启用预算保护</strong><p>关闭后仍保留配置，但不会参与预算判断。</p></div>
             <label class="switch"><input id="enabled" type="checkbox"><span></span></label>
@@ -317,6 +368,8 @@
     let config = { subsidiaries: {} };
     let selectedId = null;
     let dirty = false;
+    const now = new Date();
+    $("billingCycle").value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
     function authHeaders() {
       return { "Authorization": `Bearer ${$("token").value}`, "Content-Type": "application/json" };
@@ -346,8 +399,68 @@
       $("statCompanies").textContent = items.length;
       $("statEnabled").textContent = items.filter(item => item.enabled !== false).length;
       $("statProjects").textContent = new Set(items.map(item => item.volc_project).filter(Boolean)).size;
-      const monthly = items.reduce((sum, item) => sum + Number(item.budgets?.monthly?.amount || 0), 0);
-      $("statMonthly").textContent = monthly ? `¥ ${amount(monthly)}` : "—";
+    }
+    function totalsText(totals = {}) {
+      const values = Object.entries(totals).map(([currency, value]) => `${currency} ${amount(value)}`);
+      return values.join(" / ") || "—";
+    }
+    function renderBills(snapshot) {
+      $("statSpend").textContent = totalsText(snapshot.totals);
+      const updated = snapshot.updated_at ? new Date(snapshot.updated_at).toLocaleString("zh-CN") : "尚未同步";
+      $("billStatus").textContent = `${snapshot.billing_cycle} · ${snapshot.count} 条 · 最近同步 ${updated}`;
+      const body = $("billRows");
+      body.replaceChildren();
+      if (!snapshot.projects.length) {
+        const row = body.insertRow();
+        const cell = row.insertCell();
+        cell.colSpan = 3;
+        cell.textContent = "该月份暂无账单数据";
+        return;
+      }
+      for (const item of snapshot.projects) {
+        const row = body.insertRow();
+        const values = [
+          item.project, `${item.currency} ${amount(item.amount)}`, updated
+        ];
+        values.forEach((value, index) => {
+          const cell = row.insertCell();
+          cell.textContent = value;
+          if (index === 1) cell.className = "amount";
+        });
+      }
+    }
+    async function loadBills(silent = false) {
+      if (!$("token").value) {
+        if (!silent) notify("请先输入配置访问令牌", true);
+        return;
+      }
+      try {
+        const cycle = encodeURIComponent($("billingCycle").value);
+        const response = await fetch(`/api/bills?billing_cycle=${cycle}`, { headers: authHeaders() });
+        renderBills(await parseResponse(response));
+      } catch (error) {
+        if (!silent) notify(error.message, true);
+      }
+    }
+    async function pollBills() {
+      if (!$("token").value) return notify("请先输入配置访问令牌", true);
+      const button = $("pollBills");
+      button.disabled = true;
+      button.textContent = "查询中…";
+      try {
+        const cycle = encodeURIComponent($("billingCycle").value);
+        const response = await fetch(`/api/poll?billing_cycle=${cycle}`, {
+          method: "POST", headers: authHeaders()
+        });
+        const result = await parseResponse(response);
+        renderBills(result.bills);
+        notify("账单同步完成");
+      } catch (error) {
+        notify(error.message, true);
+      } finally {
+        button.disabled = false;
+        button.textContent = "立即查询账单";
+      }
     }
     function renderList() {
       const list = $("companyList");
@@ -388,7 +501,6 @@
       $("form").hidden = !item;
       if (!item) return;
       $("editorTitle").textContent = item.company_name || selectedId;
-      setValue("subsidiaryId", selectedId);
       setValue("companyName", item.company_name || item.name);
       setValue("volcProject", item.volc_project || selectedId);
       setValue("currency", item.currency || "CNY");
@@ -397,6 +509,10 @@
       setValue("warningRatio", item.warning_ratio ?? "0.80");
       setValue("throttleRatio", item.throttle_ratio ?? "0.95");
       setValue("blockRatio", item.block_ratio ?? "1.00");
+      setValue("stopEndpoints", String(item.control?.stop_endpoints_on_block ?? true));
+      setValue("disableIamKeys", String(item.control?.disable_iam_access_keys_on_block ?? false));
+      setValue("iamUserName", item.control?.iam_user_name);
+      setValue("iamAccessKeys", (item.control?.iam_access_key_ids || []).join("\n"));
       for (const period of periodIds) {
         const budget = period === "total" ? item.budgets?.total || item.budgets?.lifetime : item.budgets?.[period];
         setValue(period, budget?.amount);
@@ -408,9 +524,8 @@
     function syncForm() {
       if (!selectedId || $("form").hidden) return;
       if (!$("form").reportValidity()) throw new Error("请先补全必填项");
-      const nextId = $("subsidiaryId").value.trim();
-      if (!/^[A-Za-z0-9._-]+$/.test(nextId)) throw new Error("子公司 ID 格式不正确");
-      if (nextId !== selectedId && config.subsidiaries[nextId]) throw new Error("子公司 ID 已存在");
+      const nextId = $("volcProject").value.trim();
+      if (nextId !== selectedId && config.subsidiaries[nextId]) throw new Error("火山 Project 已存在");
       const budgets = {};
       for (const period of periodIds) {
         const value = $(period).value.trim();
@@ -430,6 +545,12 @@
         throttle_ratio: $("throttleRatio").value,
         block_ratio: $("blockRatio").value,
         budgets,
+        control: {
+          stop_endpoints_on_block: $("stopEndpoints").value === "true",
+          disable_iam_access_keys_on_block: $("disableIamKeys").value === "true",
+          iam_user_name: $("iamUserName").value.trim(),
+          iam_access_key_ids: $("iamAccessKeys").value.split(/\s+/).filter(Boolean)
+        },
         throttle_rps: Number($("throttleRps").value),
         enabled: $("enabled").checked
       };
@@ -473,6 +594,7 @@
         renderList();
         renderForm();
         updateSummary();
+        await loadBills(true);
         if (migrated) markDirty();
         notify(migrated ? "旧配置已转换，请保存" : "配置已加载");
       } catch (error) {
@@ -500,6 +622,9 @@
     }
 
     $("load").addEventListener("click", loadConfig);
+    $("refreshBills").addEventListener("click", () => loadBills());
+    $("pollBills").addEventListener("click", pollBills);
+    $("billingCycle").addEventListener("change", () => loadBills());
     $("token").addEventListener("keydown", event => { if (event.key === "Enter") loadConfig(); });
     $("search").addEventListener("input", renderList);
     $("form").addEventListener("submit", saveConfig);
@@ -515,7 +640,9 @@
         config.subsidiaries[id] = {
           company_name: `新子公司 ${index}`, volc_project: `project-${index}`, currency: "CNY",
           warning_ratio: "0.80", throttle_ratio: "0.95", block_ratio: "1.00",
-          budgets: { monthly: { amount: "10000.00" } }, throttle_rps: 1, enabled: true
+          budgets: { monthly: { amount: "10000.00" } },
+          control: { stop_endpoints_on_block: true, disable_iam_access_keys_on_block: false },
+          throttle_rps: 1, enabled: true
         };
         selectedId = id;
         renderList();
@@ -534,6 +661,7 @@
       updateSummary();
       markDirty();
     });
+    setInterval(() => loadBills(true), 30000);
   </script>
 </body>
 </html>
