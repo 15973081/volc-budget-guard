@@ -37,17 +37,18 @@ def main() -> None:
 
     try:
         import uvicorn
+        from budget_guard.config import settings
     except ModuleNotFoundError as exc:
         raise SystemExit("缺少依赖，请先运行: python -m pip install -e .") from exc
 
     print("\nBudget Guard 启动中")
-    print("配置页面: http://127.0.0.1:8000/admin")
+    print(f"配置页面: http://127.0.0.1:{settings.app_port}/admin")
     if generated:
         print(f"首次访问令牌: {token}")
     else:
         print("访问令牌: 使用 .env 中的 CONFIG_API_TOKEN")
     print("停止服务: Ctrl+C\n")
-    uvicorn.run("budget_guard.api.main:app", host="127.0.0.1", port=8000)
+    uvicorn.run("budget_guard.api.main:app", host="127.0.0.1", port=settings.app_port)
 
 
 if __name__ == "__main__":

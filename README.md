@@ -60,7 +60,7 @@ api/main.py            轮询与事件查询接口
 python start.py
 ```
 
-首次运行会自动从 `.env.example` 创建 `.env`，并生成配置页面访问令牌。打开终端显示的 `/admin` 地址即可。
+首次运行会自动从 `.env.example` 创建 `.env`，并生成配置页面访问令牌。可在 `.env` 中通过 `APP_PORT=8000` 修改端口，打开终端显示的 `/admin` 地址即可。
 
 手动启动方式：
 
