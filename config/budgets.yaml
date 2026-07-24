@@ -17,3 +17,21 @@ subsidiaries:
       iam_access_key_ids: []
     throttle_rps: 1
     enabled: true
+  seedance-summercompany:
+    company_name: 新公司
+    volc_project: seedance-summercompany
+    currency: CNY
+    warning_ratio: '0.80'
+    throttle_ratio: '0.95'
+    block_ratio: '1.00'
+    budgets:
+      monthly:
+        amount: '10000.00'
+    control:
+      stop_endpoints_on_block: true
+      disable_iam_access_keys_on_block: false
+      iam_user_name: ''
+      iam_access_key_ids: []
+    throttle_rps: 1
+    enabled: true
+    project_start_date: '2026-07-01'

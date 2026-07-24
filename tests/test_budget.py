@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from budget_guard.adapters.billing import VolcBillingProvider, currency, project_id, unique_key
+from budget_guard.adapters.limiter import VolcLimiter
 from budget_guard.api import main as api_main
 from budget_guard.api.main import app
 from budget_guard.config import settings
@@ -102,6 +103,13 @@ def test_admin_config_api(tmp_path, monkeypatch):
     save_budget_config(path, payload)
     monkeypatch.setattr(settings, "budget_config_path", path)
     monkeypatch.setattr(settings, "config_api_token", "test-token")
+    limiter = VolcLimiter("ak", "sk", "cn-beijing", "https://ark", "https://iam", True)
+    monkeypatch.setattr(limiter, "project_status", lambda budget: {
+        "dry_run": True, "endpoints": [{"id": "ep-1", "status": "Running"}],
+        "access_keys": [],
+    })
+    monkeypatch.setattr(limiter, "set_endpoints", lambda project, enabled: ["ep-1"])
+    monkeypatch.setattr(api_main, "limiter_provider", lambda: limiter)
     client = TestClient(app)
 
     admin = client.get("/admin")
@@ -112,12 +120,25 @@ def test_admin_config_api(tmp_path, monkeypatch):
     headers = {"Authorization": "Bearer test-token"}
     assert client.get("/api/config", headers=headers).json() == payload
     assert client.put("/api/config", headers=headers, json=payload).json() == {"status": "saved"}
+    assert client.get("/api/control/company-a", headers=headers).json()["dry_run"] is True
+    result = client.post(
+        "/api/control/company-a/endpoints?enabled=false", headers=headers
+    ).json()
+    assert result["changed"] == ["ep-1"]
+    assert client.post(
+        "/api/control/company-a/all?enabled=false", headers=headers
+    ).json()["changed"] == ["ep-1"]
 
 
 def test_bill_query_and_manual_poll(tmp_path, monkeypatch):
     engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
     Base.metadata.create_all(engine)
     test_session = sessionmaker(engine, expire_on_commit=False)
+    config_path = tmp_path / "budgets.yaml"
+    save_budget_config(config_path, {"subsidiaries": {"company-a": {
+        "volc_project": "project-a", "currency": "CNY",
+        "warning_ratio": "0.8", "budgets": {"monthly": {"amount": "100"}},
+    }}})
     with test_session.begin() as db:
         db.add(BillDetail(
             unique_key="test-bill", billing_cycle="2099-01", project_id="project-a",
@@ -126,12 +147,14 @@ def test_bill_query_and_manual_poll(tmp_path, monkeypatch):
         ))
     monkeypatch.setattr(api_main, "SessionLocal", test_session)
     monkeypatch.setattr(api_main, "run_poll", lambda cycle: {"company-a": {"state": "normal"}})
+    monkeypatch.setattr(settings, "budget_config_path", config_path)
     monkeypatch.setattr(settings, "config_api_token", "test-token")
     headers = {"Authorization": "Bearer test-token"}
     client = TestClient(app)
 
     bills = client.get("/api/bills?billing_cycle=2099-01", headers=headers).json()
     assert bills["totals"] == {"CNY": "12.50000000"}
+    assert Decimal(bills["budget_metrics"]["company-a"]["warning_left"]) == Decimal("67.5")
     result = client.post("/api/poll?billing_cycle=2099-01", headers=headers).json()
     assert result["states"]["company-a"]["state"] == "normal"
     assert result["bills"]["count"] == 1

@@ -81,6 +81,87 @@ class VolcLimiter(Limiter):
                 return items
             page += 1
 
+    def _list_access_keys(self, user_name: str) -> list[dict]:
+        return self._iam("ListAccessKeys", {"UserName": user_name}).get(
+            "AccessKeyMetadata", []
+        )
+
+    def project_status(self, budget: SubsidiaryBudget) -> dict:
+        control = budget.control
+        access_keys = []
+        if control.iam_user_name and control.iam_access_key_ids:
+            configured = set(control.iam_access_key_ids)
+            access_keys = [
+                {"id": item["AccessKeyId"], "status": item.get("Status", "unknown")}
+                for item in self._list_access_keys(control.iam_user_name)
+                if item.get("AccessKeyId") in configured
+            ]
+        return {
+            "dry_run": self.dry_run,
+            "endpoints": [
+                {"id": item["Id"], "status": item.get("Status", "unknown")}
+                for item in self._list_endpoints(budget.volc_project)
+            ],
+            "access_keys": access_keys,
+        }
+
+    def set_endpoints(
+        self, project: str, enabled: bool, track: bool = False
+    ) -> list[str]:
+        target_statuses = {"stopped"} if enabled else {"running", "available"}
+        action = "StartEndpoint" if enabled else "StopEndpoint"
+        verb = "start" if enabled else "stop"
+        changed = []
+        for endpoint in self._list_endpoints(project):
+            if str(endpoint.get("Status", "")).lower() not in target_statuses:
+                continue
+            endpoint_id = str(endpoint["Id"])
+            changed.append(endpoint_id)
+            if self.dry_run:
+                print(f"DRY_RUN would {verb} endpoint={endpoint_id} project={project}")
+                continue
+            self._ark(action, {"Id": endpoint_id})
+            if track and not enabled:
+                self._record(project, "ark_endpoint", endpoint_id)
+        return changed
+
+    def set_access_keys(
+        self, user_name: str, access_key_ids: tuple[str, ...],
+        enabled: bool, track_project: str = "",
+    ) -> list[str]:
+        if not user_name or not access_key_ids:
+            raise ValueError("IAM user name and access key IDs are required")
+        statuses = {
+            item["AccessKeyId"]: str(item.get("Status", "")).lower()
+            for item in self._list_access_keys(user_name)
+        }
+        missing = [access_key_id for access_key_id in access_key_ids if access_key_id not in statuses]
+        if missing:
+            raise ValueError(f"IAM access key not found: {', '.join(missing)}")
+        desired = "active" if enabled else "inactive"
+        changed = []
+        for access_key_id in access_key_ids:
+            if statuses[access_key_id] == desired:
+                continue
+            changed.append(access_key_id)
+            if self.dry_run:
+                print(
+                    f"DRY_RUN would set iam_access_key={access_key_id} "
+                    f"user={user_name} status={desired}"
+                )
+                continue
+            self._iam("UpdateAccessKey", {
+                "UserName": user_name,
+                "AccessKeyId": access_key_id,
+                "Status": desired,
+            })
+            if track_project and not enabled:
+                self._record(
+                    track_project, "iam_access_key", access_key_id,
+                    {"user_name": user_name},
+                )
+        return changed
+
     def _record(
         self, project: str, resource_type: str, resource_id: str, detail: dict | None = None
     ) -> None:
@@ -105,40 +186,12 @@ class VolcLimiter(Limiter):
                 f"disable_iam_keys={control.disable_iam_access_keys_on_block}"
             )
         if control.stop_endpoints_on_block:
-            for endpoint in self._list_endpoints(project):
-                if str(endpoint.get("Status", "")).lower() not in ("running", "available"):
-                    continue
-                endpoint_id = str(endpoint["Id"])
-                if self.dry_run:
-                    print(f"DRY_RUN would stop endpoint={endpoint_id} project={project}")
-                    continue
-                self._ark("StopEndpoint", {"Id": endpoint_id})
-                self._record(project, "ark_endpoint", endpoint_id)
+            self.set_endpoints(project, False, track=True)
         if control.disable_iam_access_keys_on_block:
-            metadata = self._iam(
-                "ListAccessKeys", {"UserName": control.iam_user_name}
-            ).get("AccessKeyMetadata", [])
-            statuses = {item["AccessKeyId"]: item.get("Status") for item in metadata}
-            for access_key_id in control.iam_access_key_ids:
-                if access_key_id not in statuses:
-                    raise RuntimeError(f"IAM access key not found: {access_key_id}")
-                if statuses[access_key_id] != "active":
-                    continue
-                if self.dry_run:
-                    print(
-                        f"DRY_RUN would disable iam_access_key={access_key_id} "
-                        f"user={control.iam_user_name}"
-                    )
-                    continue
-                self._iam("UpdateAccessKey", {
-                    "UserName": control.iam_user_name,
-                    "AccessKeyId": access_key_id,
-                    "Status": "inactive",
-                })
-                self._record(
-                    project, "iam_access_key", access_key_id,
-                    {"user_name": control.iam_user_name},
-                )
+            self.set_access_keys(
+                control.iam_user_name, control.iam_access_key_ids,
+                False, track_project=project,
+            )
 
     def set_normal(self, budget: SubsidiaryBudget) -> None:
         project = budget.volc_project

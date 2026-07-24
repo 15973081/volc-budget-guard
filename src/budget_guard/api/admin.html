@@ -19,6 +19,7 @@
     }
 
     * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
     body {
       margin: 0;
       color: var(--ink);
@@ -146,6 +147,32 @@
     .editor-head { display: flex; align-items: start; justify-content: space-between; gap: 18px; margin-bottom: 28px; }
     .editor-head h2 { margin: 0 0 5px; font: 700 27px/1.1 Georgia, serif; }
     .editor-head p { margin: 0; color: var(--muted); }
+    .project-dashboard {
+      display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 24px; align-items: center;
+      padding: 20px; border-radius: 16px; background: #f3f7f2; border: 1px solid #d9e4dc;
+    }
+    .gauge {
+      --gauge: 0%; width: 132px; aspect-ratio: 1; display: grid; place-items: center;
+      border-radius: 50%; background: conic-gradient(var(--green) var(--gauge), #dce5de 0);
+    }
+    .gauge::before {
+      content: ""; width: 98px; aspect-ratio: 1; grid-area: 1 / 1;
+      border-radius: 50%; background: var(--panel);
+    }
+    .gauge div { z-index: 1; grid-area: 1 / 1; text-align: center; }
+    .gauge strong, .gauge span { display: block; }
+    .gauge strong { font-size: 24px; }
+    .gauge span { margin-top: 2px; color: var(--muted); font-size: 11px; }
+    .project-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .project-metric { padding: 14px; border-radius: 11px; background: var(--panel); border: 1px solid var(--line); }
+    .project-metric span { display: block; color: var(--muted); font-size: 12px; }
+    .project-metric strong { display: block; margin-top: 6px; font-size: 20px; }
+    .control-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .control-card { padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: #fafaf6; }
+    .control-card p { min-height: 20px; margin: 7px 0 12px; color: var(--muted); font-size: 13px; }
+    .control-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .control-actions .btn { flex: 1; min-width: 110px; }
+    .control-all { margin-bottom: 12px; }
     .section { padding-top: 23px; margin-top: 23px; border-top: 1px solid var(--line); }
     .section:first-of-type { padding-top: 0; margin-top: 0; border-top: 0; }
     .section-title { margin: 0 0 14px; font-size: 13px; text-transform: uppercase; letter-spacing: .09em; }
@@ -201,6 +228,8 @@
       .company-list { display: flex; overflow-x: auto; }
       .company { min-width: 210px; }
       .budget-grid { grid-template-columns: repeat(2, 1fr); }
+      .project-dashboard { grid-template-columns: 1fr; }
+      .gauge { margin: auto; }
     }
     @media (max-width: 620px) {
       .topbar, .intro, .editor-head, .savebar, .billing-head { align-items: stretch; flex-direction: column; }
@@ -208,7 +237,7 @@
       .auth input { width: 100%; }
       .page { width: min(100% - 24px, 1440px); margin-top: 20px; }
       .stats, .fields { grid-template-columns: 1fr; }
-      .budget-grid { grid-template-columns: 1fr; }
+      .budget-grid, .project-metrics, .control-grid { grid-template-columns: 1fr; }
       .save-actions { width: 100%; }
       .save-actions button { flex: 1; }
       .billing-actions { align-items: stretch; flex-direction: column; }
@@ -274,6 +303,44 @@
             <div><h2 id="editorTitle">子公司配置</h2><p>所有金额都按配置币种计算。</p></div>
             <button class="btn btn-danger" type="button" id="remove">删除子公司</button>
           </div>
+
+          <section class="project-dashboard" aria-label="项目预算仪表盘">
+            <div class="gauge" id="budgetGauge">
+              <div><strong id="gaugePercent">0%</strong><span id="gaugeCycle">预算使用</span></div>
+            </div>
+            <div class="project-metrics">
+              <div class="project-metric"><span>预算金额</span><strong id="projectBudget">—</strong></div>
+              <div class="project-metric"><span>已消费</span><strong id="projectSpent">—</strong></div>
+              <div class="project-metric"><span>距离预警</span><strong id="projectWarningLeft">—</strong></div>
+            </div>
+          </section>
+
+          <section class="section">
+            <h3 class="section-title">实时资源控制</h3>
+            <div class="control-actions control-all">
+              <button class="btn btn-danger" type="button" id="blockAllNow">一键全部封禁</button>
+              <button class="btn btn-ghost" type="button" id="restoreAllNow">一键全部恢复</button>
+            </div>
+            <div class="control-grid">
+              <div class="control-card">
+                <strong>Project 推理接入点</strong>
+                <p id="endpointStatus">正在读取状态…</p>
+                <div class="control-actions">
+                  <button class="btn btn-danger" type="button" id="stopEndpointsNow">停止全部</button>
+                  <button class="btn btn-ghost" type="button" id="startEndpointsNow">启动全部</button>
+                </div>
+              </div>
+              <div class="control-card">
+                <strong>IAM Access Key</strong>
+                <p id="iamStatus">请先配置 IAM 用户名和 AK</p>
+                <div class="control-actions">
+                  <button class="btn btn-danger" type="button" id="disableIamNow">全部禁用</button>
+                  <button class="btn btn-ghost" type="button" id="enableIamNow">全部启用</button>
+                </div>
+              </div>
+            </div>
+            <span class="hint" id="controlMode"></span>
+          </section>
 
           <section class="section">
             <h3 class="section-title">归属关系</h3>
@@ -368,6 +435,7 @@
     let config = { subsidiaries: {} };
     let selectedId = null;
     let dirty = false;
+    let billSnapshot = { projects: [] };
     const now = new Date();
     $("billingCycle").value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
@@ -404,7 +472,37 @@
       const values = Object.entries(totals).map(([currency, value]) => `${currency} ${amount(value)}`);
       return values.join(" / ") || "—";
     }
+    function renderProjectDashboard() {
+      const item = config.subsidiaries?.[selectedId];
+      if (!item || $("form").hidden) return;
+      const periodNames = {
+        monthly: "月预算", quarterly: "季度预算", yearly: "年度预算", total: "累计总预算"
+      };
+      const metric = billSnapshot.budget_metrics?.[selectedId];
+      const currency = metric?.currency || $("currency").value || item.currency || "CNY";
+      const project = $("volcProject").value || item.volc_project || selectedId;
+      const budget = Number(metric?.budget || $("monthly").value || 0);
+      const fallbackSpent = (billSnapshot.projects || [])
+        .filter(row => row.project === project && row.currency === currency)
+        .reduce((sum, row) => sum + Number(row.amount || 0), 0);
+      const spent = Number(metric?.spent ?? fallbackSpent);
+      const warningLeft = Number(metric?.warning_left ?? Math.max(
+        budget * Number($("warningRatio").value || 0.8) - spent, 0
+      ));
+      const percent = metric ? Number(metric.ratio) * 100 : (budget > 0 ? spent / budget * 100 : 0);
+      $("projectBudget").textContent = budget > 0 ? `${currency} ${amount(budget)}` : "未配置";
+      $("projectSpent").textContent = `${currency} ${amount(spent)}`;
+      $("projectWarningLeft").textContent = budget > 0
+        ? `${currency} ${amount(warningLeft)}` : "未配置";
+      $("gaugePercent").textContent = `${amount(percent)}%`;
+      $("gaugeCycle").textContent = metric
+        ? `${periodNames[metric.period] || metric.period}使用`
+        : `${$("billingCycle").value} 月预算`;
+      $("budgetGauge").style.setProperty("--gauge", `${Math.min(Math.max(percent, 0), 100)}%`);
+    }
     function renderBills(snapshot) {
+      billSnapshot = snapshot;
+      renderProjectDashboard();
       $("statSpend").textContent = totalsText(snapshot.totals);
       const updated = snapshot.updated_at ? new Date(snapshot.updated_at).toLocaleString("zh-CN") : "尚未同步";
       $("billStatus").textContent = `${snapshot.billing_cycle} · ${snapshot.count} 条 · 最近同步 ${updated}`;
@@ -460,6 +558,76 @@
       } finally {
         button.disabled = false;
         button.textContent = "立即查询账单";
+      }
+    }
+    const controlButtonIds = [
+      "blockAllNow", "restoreAllNow", "stopEndpointsNow", "startEndpointsNow",
+      "disableIamNow", "enableIamNow"
+    ];
+    function setControlBusy(busy) {
+      for (const id of controlButtonIds) $(id).disabled = busy;
+    }
+    function renderControlStatus(status) {
+      const endpoints = status.endpoints || [];
+      const running = endpoints.filter(item => ["running", "available"].includes(String(item.status).toLowerCase())).length;
+      const stopped = endpoints.filter(item => String(item.status).toLowerCase() === "stopped").length;
+      $("endpointStatus").textContent = `${endpoints.length} 个 · ${running} 运行 · ${stopped} 停止`;
+      $("stopEndpointsNow").disabled = running === 0;
+      $("startEndpointsNow").disabled = stopped === 0;
+
+      const keys = status.access_keys || [];
+      const active = keys.filter(item => String(item.status).toLowerCase() === "active").length;
+      const inactive = keys.filter(item => String(item.status).toLowerCase() === "inactive").length;
+      $("iamStatus").textContent = keys.length
+        ? `${keys.length} 个 · ${active} 启用 · ${inactive} 禁用`
+        : "未配置 IAM 用户名和 Access Key ID";
+      $("disableIamNow").disabled = active === 0;
+      $("enableIamNow").disabled = inactive === 0;
+      $("blockAllNow").disabled = running === 0 && active === 0;
+      $("restoreAllNow").disabled = stopped === 0 && inactive === 0;
+      $("controlMode").textContent = status.dry_run
+        ? "当前为 DRY_RUN 演练模式，按钮不会实际修改火山资源。"
+        : "当前为实时控制模式，操作会立即提交到火山引擎。";
+    }
+    async function loadControlStatus(silent = false) {
+      if (!$("token").value || !selectedId) return;
+      const requestedId = selectedId;
+      setControlBusy(true);
+      try {
+        const response = await fetch(`/api/control/${encodeURIComponent(requestedId)}`, {
+          headers: authHeaders()
+        });
+        const status = await parseResponse(response);
+        if (requestedId === selectedId) renderControlStatus(status);
+      } catch (error) {
+        if (requestedId === selectedId) {
+          $("endpointStatus").textContent = "状态读取失败";
+          $("iamStatus").textContent = "状态读取失败";
+          if (!silent) notify(error.message, true);
+        }
+      }
+    }
+    async function manualControl(resource, enabled) {
+      if (dirty) return notify("请先保存配置，再执行资源控制", true);
+      const target = resource === "all"
+        ? "该子公司的 IAM Access Key 和 Project 推理接入点"
+        : resource === "endpoints" ? "Project 下全部推理接入点" : "已配置的 IAM Access Key";
+      const action = enabled ? "启用" : "禁用";
+      if (!confirm(`确认${action}${target}？`)) return;
+      setControlBusy(true);
+      try {
+        const response = await fetch(
+          `/api/control/${encodeURIComponent(selectedId)}/${resource}?enabled=${enabled}`,
+          { method: "POST", headers: authHeaders() }
+        );
+        const result = await parseResponse(response);
+        renderControlStatus(result.status);
+        const prefix = result.dry_run ? "演练完成，预计操作" : "操作完成";
+        notify(`${prefix} ${result.changed.length} 个资源`);
+      } catch (error) {
+        notify(error.message, true);
+      } finally {
+        await loadControlStatus(true);
       }
     }
     function renderList() {
@@ -518,6 +686,11 @@
         setValue(period, budget?.amount);
       }
       $("enabled").checked = item.enabled !== false;
+      renderProjectDashboard();
+      $("endpointStatus").textContent = "正在读取状态…";
+      $("iamStatus").textContent = "正在读取状态…";
+      $("controlMode").textContent = "";
+      setControlBusy(true);
       dirty = false;
       $("saveState").textContent = "配置已加载";
     }
@@ -570,6 +743,7 @@
         selectedId = id;
         renderList();
         renderForm();
+        loadControlStatus(true);
       } catch (error) {
         notify(error.message, true);
       }
@@ -594,7 +768,7 @@
         renderList();
         renderForm();
         updateSummary();
-        await loadBills(true);
+        await Promise.all([loadBills(true), loadControlStatus(true)]);
         if (migrated) markDirty();
         notify(migrated ? "旧配置已转换，请保存" : "配置已加载");
       } catch (error) {
@@ -615,6 +789,8 @@
         await parseResponse(response);
         dirty = false;
         $("saveState").textContent = "刚刚保存";
+        renderProjectDashboard();
+        await loadControlStatus(true);
         notify("配置保存成功");
       } catch (error) {
         notify(error.message, true);
@@ -628,8 +804,14 @@
     $("token").addEventListener("keydown", event => { if (event.key === "Enter") loadConfig(); });
     $("search").addEventListener("input", renderList);
     $("form").addEventListener("submit", saveConfig);
-    $("form").addEventListener("input", markDirty);
-    $("form").addEventListener("change", markDirty);
+    $("form").addEventListener("input", () => { markDirty(); renderProjectDashboard(); });
+    $("form").addEventListener("change", () => { markDirty(); renderProjectDashboard(); });
+    $("stopEndpointsNow").addEventListener("click", () => manualControl("endpoints", false));
+    $("startEndpointsNow").addEventListener("click", () => manualControl("endpoints", true));
+    $("disableIamNow").addEventListener("click", () => manualControl("iam", false));
+    $("enableIamNow").addEventListener("click", () => manualControl("iam", true));
+    $("blockAllNow").addEventListener("click", () => manualControl("all", false));
+    $("restoreAllNow").addEventListener("click", () => manualControl("all", true));
     $("reload").addEventListener("click", loadConfig);
     $("add").addEventListener("click", () => {
       try {
