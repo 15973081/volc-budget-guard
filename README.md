@@ -54,6 +54,16 @@ api/main.py            轮询与事件查询接口
 
 ## 启动
 
+最简单的启动方式：
+
+```bash
+python start.py
+```
+
+首次运行会自动从 `.env.example` 创建 `.env`，并生成配置页面访问令牌。打开终端显示的 `/admin` 地址即可。
+
+手动启动方式：
+
 ```bash
 cp .env.example .env
 python -m venv .venv
