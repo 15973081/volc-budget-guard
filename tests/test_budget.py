@@ -3,14 +3,15 @@ from datetime import date
 import json
 import httpx
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from budget_guard.adapters.billing import VolcBillingProvider, currency, project_id, unique_key
 from budget_guard.adapters.limiter import VolcLimiter
+from budget_guard.adapters.volc import VolcOpenAPI
 from budget_guard.api import main as api_main
 from budget_guard.api.main import app
 from budget_guard.config import settings
-from budget_guard.db import Base, BillDetail
+from budget_guard.db import Base, BillDetail, ControlledResource
 from budget_guard.domain.models import BudgetLimit, EnforcementState
 from budget_guard.services.budgets import (
     budget_window,
@@ -116,6 +117,7 @@ def test_admin_config_api(tmp_path, monkeypatch):
     assert admin.status_code == 200
     assert "内部子公司 ID" not in admin.text
     assert "项目消费金额" in admin.text
+    assert "限流后 RPS" in admin.text
     assert 'localStorage.setItem(tokenStorageKey, $("token").value)' in admin.text
     assert "const cachedToken = localStorage.getItem(tokenStorageKey)" in admin.text
     assert client.get("/api/config").status_code == 401
@@ -176,3 +178,57 @@ def test_volc_billing_request_is_signed(monkeypatch):
 
     assert captured["headers"]["Authorization"].startswith("HMAC-SHA256 Credential=ak/")
     assert json.loads(captured["content"])["BillPeriod"] == "2026-07"
+
+
+def test_volc_error_and_endpoint_throttle(tmp_path, monkeypatch):
+    def failed_request(method, url, **kwargs):
+        return httpx.Response(400, json={
+            "ResponseMetadata": {"Error": {
+                "Code": "MissingParameter.RateLimit.Tpm",
+                "Message": "RateLimit.Tpm is missing",
+            }}
+        }, request=httpx.Request(method, url))
+
+    monkeypatch.setattr("budget_guard.adapters.volc.httpx.request", failed_request)
+    try:
+        VolcOpenAPI("ak", "sk", "cn-beijing").request(
+            "https://ark", "ark", "UpdateEndpoint", "2024-01-01", body={}
+        )
+    except RuntimeError as error:
+        assert "MissingParameter.RateLimit.Tpm" in str(error)
+    else:
+        raise AssertionError("Volc API error details were discarded")
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'limiter.db'}")
+    Base.metadata.create_all(engine)
+    test_session = sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr("budget_guard.adapters.limiter.SessionLocal", test_session)
+    budget = type("Budget", (), {"volc_project": "project-a", "throttle_rps": 2})()
+    limiter = VolcLimiter(
+        "ak", "sk", "cn-beijing", "https://ark", "https://iam", False
+    )
+    monkeypatch.setattr(limiter, "_list_endpoints", lambda project: [{
+        "Id": "ep-1",
+    }])
+    calls = []
+    monkeypatch.setattr(
+        limiter, "_ark",
+        lambda action, body: calls.append((action, body)) or {"ContentGeneration": None},
+    )
+    limiter.throttle(budget)
+    assert calls == [
+        ("GetEndpoint", {"Id": "ep-1"}),
+        ("UpdateEndpoint", {
+            "Id": "ep-1", "ContentGeneration": {"CreateTaskRpm": 120},
+        }),
+    ]
+    with test_session() as db:
+        assert db.scalar(select(ControlledResource)).resource_id == "ep-1"
+
+    calls.clear()
+    limiter.set_normal(budget)
+    assert calls == [("UpdateEndpoint", {
+        "Id": "ep-1", "ContentGeneration": {"CreateTaskRpm": -1},
+    })]
+    with test_session() as db:
+        assert db.scalar(select(ControlledResource)) is None

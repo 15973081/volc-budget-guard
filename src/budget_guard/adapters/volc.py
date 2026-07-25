@@ -60,9 +60,13 @@ class VolcOpenAPI:
             method, endpoint, params=params, headers=headers,
             content=payload or None, timeout=30,
         )
-        response.raise_for_status()
-        data = response.json()
+        try:
+            data = response.json()
+        except ValueError:
+            response.raise_for_status()
+            raise
         error = data.get("ResponseMetadata", {}).get("Error")
         if error:
             raise RuntimeError(json.dumps(error, ensure_ascii=False))
+        response.raise_for_status()
         return data

@@ -235,10 +235,36 @@ class VolcLimiter(Limiter):
                 })
             elif resource.resource_type == "ark_gateway":
                 self.set_gateway(budget, True)
+            elif resource.resource_type == "ark_endpoint_content_generation":
+                detail = json.loads(resource.detail or "{}")
+                content_generation = detail.get("content_generation")
+                self._ark("UpdateEndpoint", {
+                    "Id": resource.resource_id,
+                    "ContentGeneration": content_generation
+                    if content_generation is not None
+                    else {"CreateTaskRpm": -1},
+                })
             with SessionLocal.begin() as db:
                 row = db.get(ControlledResource, resource.id)
                 if row:
                     db.delete(row)
 
     def throttle(self, budget: SubsidiaryBudget) -> None:
-        print(f"THROTTLE {budget.volc_project} requires gateway control")
+        project = budget.volc_project
+        for endpoint in self._list_endpoints(project):
+            endpoint_id = str(endpoint["Id"])
+            if self.dry_run:
+                print(
+                    f"DRY_RUN would throttle endpoint={endpoint_id} "
+                    f"project={project} rpm={budget.throttle_rps * 60}"
+                )
+                continue
+            current = self._ark("GetEndpoint", {"Id": endpoint_id})
+            self._record(
+                project, "ark_endpoint_content_generation", endpoint_id,
+                {"content_generation": current.get("ContentGeneration")},
+            )
+            self._ark("UpdateEndpoint", {
+                "Id": endpoint_id,
+                "ContentGeneration": {"CreateTaskRpm": budget.throttle_rps * 60},
+            })

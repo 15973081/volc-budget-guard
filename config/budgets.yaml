@@ -50,6 +50,7 @@ subsidiaries:
       disable_iam_access_keys_on_block: false
       iam_user_name: ''
       iam_access_key_ids: []
+      block_gateway_on_block: false
     throttle_rps: 1
     enabled: true
     project_start_date: '2026-06-01'
