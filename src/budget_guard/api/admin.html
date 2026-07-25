@@ -318,16 +318,19 @@
           <section class="section">
             <h3 class="section-title">实时资源控制</h3>
             <div class="control-actions control-all">
-              <button class="btn btn-danger" type="button" id="blockAllNow">一键全部封禁</button>
-              <button class="btn btn-ghost" type="button" id="restoreAllNow">一键全部恢复</button>
+              <button class="btn btn-danger" type="button" id="blockAllEndpointsNow">全限流（0 并发 / 0 RPM）</button>
+              <button class="btn btn-ghost" type="button" id="restoreAllLimitsNow">恢复全部限流</button>
             </div>
             <div class="control-grid">
               <div class="control-card">
-                <strong>Project 推理接入点</strong>
+                <strong>Project 推理接入点限流</strong>
                 <p id="endpointStatus">正在读取状态…</p>
                 <div class="control-actions">
-                  <button class="btn btn-danger" type="button" id="stopEndpointsNow">停止全部</button>
-                  <button class="btn btn-ghost" type="button" id="startEndpointsNow">启动全部</button>
+                  <button class="btn" type="button" id="throttleEndpointsNow">限流普通节点</button>
+                  <button class="btn" type="button" id="throttlePresetEndpointsNow">限流预置节点</button>
+                  <button class="btn" type="button" id="throttleAllEndpointsNow">限流全部节点</button>
+                  <button class="btn btn-danger" type="button" id="stopEndpointsNow">关闭普通节点</button>
+                  <button class="btn btn-ghost" type="button" id="startEndpointsNow">开启普通节点</button>
                 </div>
               </div>
               <div class="control-card">
@@ -374,6 +377,10 @@
                 <label for="throttleRps">限流后 RPS</label>
                 <input id="throttleRps" type="number" min="1" step="1" required>
               </div>
+              <div class="field">
+                <label for="throttleConcurrency">限流后并发数</label>
+                <input id="throttleConcurrency" type="number" min="1" step="1" required>
+              </div>
             </div>
           </section>
 
@@ -400,7 +407,7 @@
             <h3 class="section-title">达到封禁阈值后的控制</h3>
             <div class="fields">
               <div class="field">
-                <label for="stopEndpoints">停止该 Project 下的推理接入点</label>
+                <label for="stopEndpoints">封锁时将推理接入点限流为 0</label>
                 <select id="stopEndpoints"><option value="true">启用</option><option value="false">关闭</option></select>
               </div>
               <div class="field">
@@ -575,7 +582,8 @@
       }
     }
     const controlButtonIds = [
-      "blockAllNow", "restoreAllNow", "stopEndpointsNow", "startEndpointsNow",
+      "blockAllEndpointsNow", "restoreAllLimitsNow", "throttleEndpointsNow",
+      "throttlePresetEndpointsNow", "throttleAllEndpointsNow", "stopEndpointsNow", "startEndpointsNow",
       "disableIamNow", "enableIamNow", "blockGatewayNow", "allowGatewayNow"
     ];
     function setControlBusy(busy) {
@@ -583,9 +591,20 @@
     }
     function renderControlStatus(status) {
       const endpoints = status.endpoints || [];
+      const presetEndpoints = status.preset_endpoints || [];
       const running = endpoints.filter(item => ["running", "available"].includes(String(item.status).toLowerCase())).length;
       const stopped = endpoints.filter(item => String(item.status).toLowerCase() === "stopped").length;
       $("endpointStatus").textContent = `${endpoints.length} 个 · ${running} 运行 · ${stopped} 停止`;
+      if (presetEndpoints.length) {
+        $("endpointStatus").textContent +=
+          ` \u00b7 ${presetEndpoints.length} \u4e2a\u9884\u7f6e\u63a5\u5165\u70b9\u652f\u6301\u5e76\u53d1\u6570/RPM \u9650\u6d41`;
+      }
+      const endpointCount = endpoints.length + presetEndpoints.length;
+      $("throttleEndpointsNow").disabled = endpoints.length === 0;
+      $("throttlePresetEndpointsNow").disabled = presetEndpoints.length === 0;
+      $("throttleAllEndpointsNow").disabled = endpointCount === 0;
+      $("blockAllEndpointsNow").disabled = endpointCount === 0;
+      $("restoreAllLimitsNow").disabled = false;
       $("stopEndpointsNow").disabled = running === 0;
       $("startEndpointsNow").disabled = stopped === 0;
 
@@ -603,8 +622,6 @@
         : "未配置 LIMITER_WEBHOOK_URL";
       $("blockGatewayNow").disabled = !gateway.configured;
       $("allowGatewayNow").disabled = !gateway.configured;
-      $("blockAllNow").disabled = running === 0 && active === 0 && !gateway.configured;
-      $("restoreAllNow").disabled = stopped === 0 && inactive === 0 && !gateway.configured;
       $("controlMode").textContent = status.dry_run
         ? "当前为 DRY_RUN 演练模式，按钮不会实际修改资源或网关。"
         : "当前为实时控制模式，操作会立即提交到火山引擎或调用网关。";
@@ -655,6 +672,35 @@
         await loadControlStatus(true);
       }
     }
+    async function manualLimit(target, mode) {
+      if (dirty) return notify("请先保存配置，再执行资源控制", true);
+      const names = {
+        endpoints: "普通节点",
+        preset_endpoints: "预置节点",
+        all: "全部推理节点"
+      };
+      const actions = {
+        throttle: `按当前配置限流${names[target]}`,
+        block: `将${names[target]}限流为 0 并发 / 0 RPM`,
+        restore: `恢复${names[target]}原有限流`
+      };
+      if (!confirm(`确认${actions[mode]}？`)) return;
+      setControlBusy(true);
+      try {
+        const query = new URLSearchParams({ target, mode });
+        const response = await fetch(
+          `/api/control/${encodeURIComponent(selectedId)}/limits?${query}`,
+          { method: "POST", headers: authHeaders() }
+        );
+        const result = await parseResponse(response);
+        renderControlStatus(result.status);
+        notify(`${result.dry_run ? "演练完成，预计操作" : "操作完成"} ${result.changed.length} 个接入点`);
+      } catch (error) {
+        notify(error.message, true);
+      } finally {
+        await loadControlStatus(true);
+      }
+    }
     function renderList() {
       const list = $("companyList");
       const query = $("search").value.trim().toLowerCase();
@@ -699,6 +745,7 @@
       setValue("currency", item.currency || "CNY");
       setValue("startDate", item.project_start_date);
       setValue("throttleRps", item.throttle_rps ?? 1);
+      setValue("throttleConcurrency", item.throttle_concurrency ?? 1);
       setValue("warningRatio", item.warning_ratio ?? "0.80");
       setValue("throttleRatio", item.throttle_ratio ?? "0.95");
       setValue("blockRatio", item.block_ratio ?? "1.00");
@@ -753,6 +800,7 @@
           block_gateway_on_block: $("blockGateway").value === "true"
         },
         throttle_rps: Number($("throttleRps").value),
+        throttle_concurrency: Number($("throttleConcurrency").value),
         enabled: $("enabled").checked
       };
       if (!item.project_start_date) delete item.project_start_date;
@@ -835,14 +883,17 @@
     $("form").addEventListener("submit", saveConfig);
     $("form").addEventListener("input", () => { markDirty(); renderProjectDashboard(); });
     $("form").addEventListener("change", () => { markDirty(); renderProjectDashboard(); });
+    $("throttleEndpointsNow").addEventListener("click", () => manualLimit("endpoints", "throttle"));
+    $("throttlePresetEndpointsNow").addEventListener("click", () => manualLimit("preset_endpoints", "throttle"));
+    $("throttleAllEndpointsNow").addEventListener("click", () => manualLimit("all", "throttle"));
+    $("blockAllEndpointsNow").addEventListener("click", () => manualLimit("all", "block"));
+    $("restoreAllLimitsNow").addEventListener("click", () => manualLimit("all", "restore"));
     $("stopEndpointsNow").addEventListener("click", () => manualControl("endpoints", false));
     $("startEndpointsNow").addEventListener("click", () => manualControl("endpoints", true));
     $("disableIamNow").addEventListener("click", () => manualControl("iam", false));
     $("enableIamNow").addEventListener("click", () => manualControl("iam", true));
     $("blockGatewayNow").addEventListener("click", () => manualControl("gateway", false));
     $("allowGatewayNow").addEventListener("click", () => manualControl("gateway", true));
-    $("blockAllNow").addEventListener("click", () => manualControl("all", false));
-    $("restoreAllNow").addEventListener("click", () => manualControl("all", true));
     $("reload").addEventListener("click", loadConfig);
     $("add").addEventListener("click", () => {
       try {
@@ -859,7 +910,7 @@
             disable_iam_access_keys_on_block: false,
             block_gateway_on_block: false
           },
-          throttle_rps: 1, enabled: true
+          throttle_rps: 1, throttle_concurrency: 1, enabled: true
         };
         selectedId = id;
         renderList();

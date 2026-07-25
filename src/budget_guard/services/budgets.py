@@ -74,13 +74,18 @@ def load_budgets(path: Path) -> dict[str, SubsidiaryBudget]:
             raise ValueError(
                 f"subsidiary {subsidiary_id} requires iam_user_name and iam_access_key_ids"
             )
+        throttle_rps = int(item.get("throttle_rps", 1))
+        throttle_concurrency = int(item.get("throttle_concurrency", 1))
+        if throttle_rps < 1 or throttle_concurrency < 1:
+            raise ValueError("throttle RPS and concurrency must be greater than zero")
         result[subsidiary_id] = SubsidiaryBudget(
             subsidiary_id=subsidiary_id,
             company_name=item.get("company_name") or item.get("name", subsidiary_id),
             volc_project=volc_project,
             currency=currency,
             budgets={period: _load_limit(value) for period, value in normalized.items()},
-            throttle_rps=int(item.get("throttle_rps", 1)), enabled=bool(item.get("enabled", True)),
+            throttle_rps=throttle_rps, throttle_concurrency=throttle_concurrency,
+            enabled=bool(item.get("enabled", True)),
             project_start_date=date.fromisoformat(str(start)) if start else None,
             control=ProjectControl(
                 stop_endpoints_on_block=bool(control.get("stop_endpoints_on_block", False)),

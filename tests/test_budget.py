@@ -110,6 +110,14 @@ def test_admin_config_api(tmp_path, monkeypatch):
         "access_keys": [],
     })
     monkeypatch.setattr(limiter, "set_endpoints", lambda project, enabled: ["ep-1"])
+    limit_calls = []
+    monkeypatch.setattr(
+        limiter, "set_endpoint_limits",
+        lambda project, concurrency, rpm, target: limit_calls.append(
+            (project, concurrency, rpm, target)
+        ) or ["ep-m-1"],
+    )
+    monkeypatch.setattr(limiter, "restore_endpoint_limits", lambda project, target: ["ep-m-1"])
     monkeypatch.setattr(api_main, "limiter_provider", lambda: limiter)
     client = TestClient(app)
 
@@ -118,8 +126,13 @@ def test_admin_config_api(tmp_path, monkeypatch):
     assert "内部子公司 ID" not in admin.text
     assert "项目消费金额" in admin.text
     assert "限流后 RPS" in admin.text
+    assert "限流后并发数" in admin.text
+    assert "限流预置节点" in admin.text
+    assert "限流全部节点" in admin.text
+    assert "全限流" in admin.text
     assert 'localStorage.setItem(tokenStorageKey, $("token").value)' in admin.text
     assert "const cachedToken = localStorage.getItem(tokenStorageKey)" in admin.text
+    assert "status.preset_endpoints" in admin.text
     assert client.get("/api/config").status_code == 401
     headers = {"Authorization": "Bearer test-token"}
     assert client.get("/api/config", headers=headers).json() == payload
@@ -132,6 +145,14 @@ def test_admin_config_api(tmp_path, monkeypatch):
     assert client.post(
         "/api/control/company-a/all?enabled=false", headers=headers
     ).json()["changed"] == ["ep-1"]
+    assert client.post(
+        "/api/control/company-a/limits?target=preset_endpoints&mode=throttle",
+        headers=headers,
+    ).json()["changed"] == ["ep-m-1"]
+    assert limit_calls == [("project-a", 1, 60, "preset_endpoints")]
+    assert client.post(
+        "/api/control/company-a/limits?target=all&mode=restore", headers=headers
+    ).json()["changed"] == ["ep-m-1"]
 
 
 def test_bill_query_and_manual_poll(tmp_path, monkeypatch):
@@ -203,13 +224,18 @@ def test_volc_error_and_endpoint_throttle(tmp_path, monkeypatch):
     Base.metadata.create_all(engine)
     test_session = sessionmaker(engine, expire_on_commit=False)
     monkeypatch.setattr("budget_guard.adapters.limiter.SessionLocal", test_session)
-    budget = type("Budget", (), {"volc_project": "project-a", "throttle_rps": 2})()
+    budget = type("Budget", (), {
+        "volc_project": "project-a",
+        "throttle_rps": 2,
+        "throttle_concurrency": 1,
+    })()
     limiter = VolcLimiter(
         "ak", "sk", "cn-beijing", "https://ark", "https://iam", False
     )
     monkeypatch.setattr(limiter, "_list_endpoints", lambda project: [{
         "Id": "ep-1",
     }])
+    monkeypatch.setattr(limiter, "_list_preset_endpoints", lambda project: [])
     calls = []
     monkeypatch.setattr(
         limiter, "_ark",
@@ -219,7 +245,8 @@ def test_volc_error_and_endpoint_throttle(tmp_path, monkeypatch):
     assert calls == [
         ("GetEndpoint", {"Id": "ep-1"}),
         ("UpdateEndpoint", {
-            "Id": "ep-1", "ContentGeneration": {"CreateTaskRpm": 120},
+            "Id": "ep-1",
+            "ContentGeneration": {"ConcurrentRequests": 1, "CreateTaskRpm": 120},
         }),
     ]
     with test_session() as db:
@@ -232,3 +259,63 @@ def test_volc_error_and_endpoint_throttle(tmp_path, monkeypatch):
     })]
     with test_session() as db:
         assert db.scalar(select(ControlledResource)) is None
+
+
+def test_preset_endpoint_limits_and_restores(tmp_path, monkeypatch):
+    engine = create_engine(f"sqlite:///{tmp_path / 'preset-limiter.db'}")
+    Base.metadata.create_all(engine)
+    test_session = sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr("budget_guard.adapters.limiter.SessionLocal", test_session)
+    control = type("Control", (), {
+        "stop_endpoints_on_block": True,
+        "disable_iam_access_keys_on_block": False,
+        "block_gateway_on_block": False,
+    })()
+    budget = type("Budget", (), {
+        "volc_project": "project-a",
+        "throttle_rps": 2,
+        "throttle_concurrency": 1,
+        "control": control,
+    })()
+    limiter = VolcLimiter(
+        "ak", "sk", "cn-beijing", "https://ark", "https://iam", False
+    )
+    monkeypatch.setattr(limiter, "_list_endpoints", lambda project: [])
+    monkeypatch.setattr(limiter, "_list_preset_endpoints", lambda project: [{
+        "Id": "ep-m-1",
+        "ModelId": "doubao-seedance-2-0-260128",
+        "Status": "Running",
+    }])
+    calls = []
+
+    def ark(action, body):
+        calls.append((action, body))
+        if action == "InnerDescribeModelEndpointDetail":
+            return {"ContentGeneration": None}
+        return {}
+
+    monkeypatch.setattr(limiter, "_ark", ark)
+    limiter.throttle(budget)
+    assert calls == [
+        ("InnerDescribeModelEndpointDetail", {"Id": "ep-m-1"}),
+        ("InnerUpdateModelEndpoint", {
+            "Id": "ep-m-1",
+            "ContentGeneration": {"ConcurrentRequests": 1, "CreateTaskRpm": 120},
+        }),
+    ]
+
+    calls.clear()
+    limiter.set_normal(budget)
+    assert calls == [("InnerUpdateModelEndpoint", {
+        "Id": "ep-m-1", "ContentGeneration": None,
+    })]
+
+    calls.clear()
+    limiter.block(budget)
+    assert calls == [
+        ("InnerDescribeModelEndpointDetail", {"Id": "ep-m-1"}),
+        ("InnerUpdateModelEndpoint", {
+            "Id": "ep-m-1",
+            "ContentGeneration": {"ConcurrentRequests": 0, "CreateTaskRpm": 0},
+        }),
+    ]

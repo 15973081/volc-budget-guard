@@ -81,6 +81,30 @@ def control_status(subsidiary_id: str, authorization: str = Header(default="")):
     budget, limiter = _control_target(subsidiary_id)
     return limiter.project_status(budget)
 
+@app.post("/api/control/{subsidiary_id}/limits")
+def update_endpoint_limits(
+    subsidiary_id: str,
+    target: Literal["endpoints", "preset_endpoints", "all"],
+    mode: Literal["throttle", "block", "restore"],
+    authorization: str = Header(default=""),
+):
+    require_config_token(authorization)
+    budget, limiter = _control_target(subsidiary_id)
+    if mode == "restore":
+        changed = limiter.restore_endpoint_limits(budget.volc_project, target)
+    else:
+        changed = limiter.set_endpoint_limits(
+            budget.volc_project,
+            0 if mode == "block" else budget.throttle_concurrency,
+            0 if mode == "block" else budget.throttle_rps * 60,
+            target,
+        )
+    return {
+        "dry_run": limiter.dry_run,
+        "changed": changed,
+        "status": limiter.project_status(budget),
+    }
+
 @app.post("/api/control/{subsidiary_id}/{resource}")
 def update_control(
     subsidiary_id: str,

@@ -30,6 +30,7 @@ subsidiaries:
       iam_access_key_ids: []
       block_gateway_on_block: false
     throttle_rps: 2
+    throttle_concurrency: 1
     enabled: true
 ```
 
@@ -37,7 +38,7 @@ subsidiaries:
 
 首次启用季度、年度或总预算时，请依次执行 `budget-guard poll --billing-cycle YYYY-MM` 回填所需历史月份。历史账期只同步数据，不执行限流；回填后再轮询当前账期进行预算判断。
 
-处理链路：`火山 Project → 子公司 → 周期预算 → blocked → 停止该 Project 下的方舟 Endpoint → 恢复时只启动本系统停止的 Endpoint`。
+处理链路：`火山 Project → 子公司 → 周期预算 → throttled/blocked → 设置接入点并发数和 RPM → 恢复原限额`。
 
 ## 代码结构
 
@@ -54,10 +55,10 @@ api/main.py            轮询与事件查询接口
 ## 安全设计
 
 - 默认 `DRY_RUN=true`，不会实际封禁。
-- 封禁只停止 Endpoint，不删除 Endpoint 或其他云资源。
+- 封禁把 Endpoint 的并发数和 RPM 限制为 0，不删除或关闭云资源。
 - 阈值状态：`normal -> warning -> throttled -> blocked`。
-- `blocked` 状态每轮复查，防止新建或人工重启的 Endpoint 绕过封禁。
-- 仅记录并恢复本系统实际停止或禁用的资源，不改动封禁前已停止的资源。
+- `blocked` 状态每轮复查，防止新建 Endpoint 绕过限流。
+- 仅记录并恢复本系统实际修改的限额，不覆盖修改前的配置。
 - 明细使用 upsert，允许账单延迟更新后重新计算。
 - 建议增加“预计消费”指标；分账账单有延迟，单靠账单无法做到实时止损。
 
@@ -109,11 +110,11 @@ DRY_RUN=true
 VOLC_REGION=cn-beijing
 ```
 
-在配置网页或 `config/budgets.yaml` 中，为子公司开启 `stop_endpoints_on_block`。达到 `blocked` 后，系统会按 `ProjectName` 查询方舟 Endpoint，停止当前运行中的 Endpoint，并记录操作；预算解除后只恢复这些记录中的 Endpoint。
+在配置网页或 `config/budgets.yaml` 中设置 `throttle_rps`、`throttle_concurrency`，并开启 `stop_endpoints_on_block`。达到 `throttled` 后，系统会按 `ProjectName` 设置普通和预置推理接入点的 RPM/并发数；达到 `blocked` 后将两者设为 0；预算解除后恢复原限额。字段名 `stop_endpoints_on_block` 为兼容旧配置保留，实际不再停止接入点。
 
 需要同时限制 IAM 子账号时，再开启 `disable_iam_access_keys_on_block`，填写 IAM 用户名和 Access Key ID。这里只保存子账号 AK，不保存子账号 SK。主账号需要具有方舟 Endpoint 管理权限，以及启用 IAM 管控时所需的 Access Key 查询和状态更新权限。
 
-确认演练日志和项目映射无误后，将 `DRY_RUN=false` 并重启服务，才会执行真实停止和恢复。
+确认演练日志和项目映射无误后，将 `DRY_RUN=false` 并重启服务，才会执行真实限流和恢复。
 
 ### 方舟调用网关
 

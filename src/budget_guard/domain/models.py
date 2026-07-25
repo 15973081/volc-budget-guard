@@ -32,6 +32,7 @@ class SubsidiaryBudget:
     currency: str
     budgets: dict[str, BudgetLimit]
     throttle_rps: int
+    throttle_concurrency: int
     enabled: bool = True
     project_start_date: date | None = None
     control: ProjectControl = ProjectControl()
