@@ -116,6 +116,8 @@ def test_admin_config_api(tmp_path, monkeypatch):
     assert admin.status_code == 200
     assert "内部子公司 ID" not in admin.text
     assert "项目消费金额" in admin.text
+    assert 'localStorage.setItem(tokenStorageKey, $("token").value)' in admin.text
+    assert "const cachedToken = localStorage.getItem(tokenStorageKey)" in admin.text
     assert client.get("/api/config").status_code == 401
     headers = {"Authorization": "Bearer test-token"}
     assert client.get("/api/config", headers=headers).json() == payload

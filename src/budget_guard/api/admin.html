@@ -445,6 +445,7 @@
   <script>
     const $ = id => document.getElementById(id);
     const periodIds = ["monthly", "quarterly", "yearly", "total"];
+    const tokenStorageKey = "volc-budget-guard.config-token";
     let config = { subsidiaries: {} };
     let selectedId = null;
     let dirty = false;
@@ -780,6 +781,7 @@
       try {
         const response = await fetch("/api/config", { headers: authHeaders() });
         config = await parseResponse(response);
+        localStorage.setItem(tokenStorageKey, $("token").value);
         let migrated = false;
         if (!config.subsidiaries && config.projects) {
           config.subsidiaries = Object.fromEntries(Object.entries(config.projects).map(([id, item]) => [
@@ -876,6 +878,11 @@
       updateSummary();
       markDirty();
     });
+    const cachedToken = localStorage.getItem(tokenStorageKey);
+    if (cachedToken) {
+      $("token").value = cachedToken;
+      loadConfig();
+    }
     setInterval(() => loadBills(true), 30000);
   </script>
 </body>
