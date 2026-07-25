@@ -105,34 +105,15 @@ def update_endpoint_limits(
         "status": limiter.project_status(budget),
     }
 
-@app.post("/api/control/{subsidiary_id}/{resource}")
-def update_control(
+@app.post("/api/control/{subsidiary_id}/endpoints")
+def update_endpoints(
     subsidiary_id: str,
-    resource: Literal["endpoints", "iam", "gateway", "all"],
     enabled: bool,
     authorization: str = Header(default=""),
 ):
     require_config_token(authorization)
     budget, limiter = _control_target(subsidiary_id)
-    try:
-        changed = []
-        if resource in ("iam", "all"):
-            control = budget.control
-            if control.iam_user_name and control.iam_access_key_ids:
-                changed.extend(limiter.set_access_keys(
-                    control.iam_user_name, control.iam_access_key_ids, enabled
-                ))
-            elif resource == "iam":
-                raise ValueError("IAM user name and access key IDs are required")
-        if resource in ("endpoints", "all"):
-            changed.extend(limiter.set_endpoints(budget.volc_project, enabled))
-        if resource in ("gateway", "all"):
-            if limiter.gateway.url_template:
-                changed.extend(limiter.set_gateway(budget, enabled))
-            elif resource == "gateway":
-                raise ValueError("LIMITER_WEBHOOK_URL is not configured")
-    except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
+    changed = limiter.set_endpoints(budget.volc_project, enabled)
     return {
         "dry_run": limiter.dry_run,
         "changed": changed,

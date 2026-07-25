@@ -19,10 +19,6 @@ class BudgetLimit:
 @dataclass(frozen=True)
 class ProjectControl:
     stop_endpoints_on_block: bool = False
-    disable_iam_access_keys_on_block: bool = False
-    iam_user_name: str = ""
-    iam_access_key_ids: tuple[str, ...] = ()
-    block_gateway_on_block: bool = False
 
 @dataclass(frozen=True)
 class SubsidiaryBudget:

@@ -64,16 +64,6 @@ def load_budgets(path: Path) -> dict[str, SubsidiaryBudget]:
         if not currency:
             raise ValueError(f"subsidiary {subsidiary_id} must configure a currency")
         control = item.get("control") or {}
-        access_key_ids = tuple(
-            value.strip() for value in control.get("iam_access_key_ids", []) if value.strip()
-        )
-        disable_keys = bool(control.get("disable_iam_access_keys_on_block", False))
-        iam_user_name = str(control.get("iam_user_name") or "").strip()
-        block_gateway = bool(control.get("block_gateway_on_block", False))
-        if disable_keys and (not iam_user_name or not access_key_ids):
-            raise ValueError(
-                f"subsidiary {subsidiary_id} requires iam_user_name and iam_access_key_ids"
-            )
         throttle_rps = int(item.get("throttle_rps", 1))
         throttle_concurrency = int(item.get("throttle_concurrency", 1))
         if throttle_rps < 1 or throttle_concurrency < 1:
@@ -89,10 +79,6 @@ def load_budgets(path: Path) -> dict[str, SubsidiaryBudget]:
             project_start_date=date.fromisoformat(str(start)) if start else None,
             control=ProjectControl(
                 stop_endpoints_on_block=bool(control.get("stop_endpoints_on_block", False)),
-                disable_iam_access_keys_on_block=disable_keys,
-                iam_user_name=iam_user_name,
-                iam_access_key_ids=access_key_ids,
-                block_gateway_on_block=block_gateway,
             ),
         )
     return result

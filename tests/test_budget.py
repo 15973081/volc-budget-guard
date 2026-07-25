@@ -104,10 +104,9 @@ def test_admin_config_api(tmp_path, monkeypatch):
     save_budget_config(path, payload)
     monkeypatch.setattr(settings, "budget_config_path", path)
     monkeypatch.setattr(settings, "config_api_token", "test-token")
-    limiter = VolcLimiter("ak", "sk", "cn-beijing", "https://ark", "https://iam", True)
+    limiter = VolcLimiter("ak", "sk", "cn-beijing", "https://ark", True)
     monkeypatch.setattr(limiter, "project_status", lambda budget: {
         "dry_run": True, "endpoints": [{"id": "ep-1", "status": "Running"}],
-        "access_keys": [],
     })
     monkeypatch.setattr(limiter, "set_endpoints", lambda project, enabled: ["ep-1"])
     limit_calls = []
@@ -130,6 +129,8 @@ def test_admin_config_api(tmp_path, monkeypatch):
     assert "限流预置节点" in admin.text
     assert "限流全部节点" in admin.text
     assert "全限流" in admin.text
+    assert "方舟调用网关" not in admin.text
+    assert "全部禁用" not in admin.text
     assert 'localStorage.setItem(tokenStorageKey, $("token").value)' in admin.text
     assert "const cachedToken = localStorage.getItem(tokenStorageKey)" in admin.text
     assert "status.preset_endpoints" in admin.text
@@ -143,9 +144,6 @@ def test_admin_config_api(tmp_path, monkeypatch):
     ).json()
     assert result["changed"] == ["ep-1"]
     assert client.post(
-        "/api/control/company-a/all?enabled=false", headers=headers
-    ).json()["changed"] == ["ep-1"]
-    assert client.post(
         "/api/control/company-a/limits?target=preset_endpoints&mode=throttle",
         headers=headers,
     ).json()["changed"] == ["ep-m-1"]
@@ -153,6 +151,12 @@ def test_admin_config_api(tmp_path, monkeypatch):
     assert client.post(
         "/api/control/company-a/limits?target=all&mode=restore", headers=headers
     ).json()["changed"] == ["ep-m-1"]
+    assert client.post(
+        "/api/control/company-a/iam?enabled=false", headers=headers
+    ).status_code == 404
+    assert client.post(
+        "/api/control/company-a/gateway?enabled=false", headers=headers
+    ).status_code == 404
 
 
 def test_bill_query_and_manual_poll(tmp_path, monkeypatch):
@@ -230,7 +234,7 @@ def test_volc_error_and_endpoint_throttle(tmp_path, monkeypatch):
         "throttle_concurrency": 1,
     })()
     limiter = VolcLimiter(
-        "ak", "sk", "cn-beijing", "https://ark", "https://iam", False
+        "ak", "sk", "cn-beijing", "https://ark", False
     )
     monkeypatch.setattr(limiter, "_list_endpoints", lambda project: [{
         "Id": "ep-1",
@@ -268,8 +272,6 @@ def test_preset_endpoint_limits_and_restores(tmp_path, monkeypatch):
     monkeypatch.setattr("budget_guard.adapters.limiter.SessionLocal", test_session)
     control = type("Control", (), {
         "stop_endpoints_on_block": True,
-        "disable_iam_access_keys_on_block": False,
-        "block_gateway_on_block": False,
     })()
     budget = type("Budget", (), {
         "volc_project": "project-a",
@@ -278,7 +280,7 @@ def test_preset_endpoint_limits_and_restores(tmp_path, monkeypatch):
         "control": control,
     })()
     limiter = VolcLimiter(
-        "ak", "sk", "cn-beijing", "https://ark", "https://iam", False
+        "ak", "sk", "cn-beijing", "https://ark", False
     )
     monkeypatch.setattr(limiter, "_list_endpoints", lambda project: [])
     monkeypatch.setattr(limiter, "_list_preset_endpoints", lambda project: [{

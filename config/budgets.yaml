@@ -12,9 +12,6 @@ subsidiaries:
         amount: '300000.00'
     control:
       stop_endpoints_on_block: true
-      disable_iam_access_keys_on_block: false
-      iam_user_name: ''
-      iam_access_key_ids: []
     throttle_rps: 1
     enabled: true
   seedance-summercompany:
@@ -29,9 +26,6 @@ subsidiaries:
         amount: '10000.00'
     control:
       stop_endpoints_on_block: true
-      disable_iam_access_keys_on_block: false
-      iam_user_name: ''
-      iam_access_key_ids: []
     throttle_rps: 1
     enabled: true
     project_start_date: '2026-07-01'
@@ -47,10 +41,6 @@ subsidiaries:
         amount: '100'
     control:
       stop_endpoints_on_block: true
-      disable_iam_access_keys_on_block: false
-      iam_user_name: ''
-      iam_access_key_ids: []
-      block_gateway_on_block: false
     throttle_rps: 1
     enabled: true
     project_start_date: '2026-06-01'

@@ -15,11 +15,8 @@ class Settings(BaseSettings):
     volc_secret_key: str = ""
     volc_billing_endpoint: str = "https://billing.volcengineapi.com"
     volc_ark_endpoint: str = "https://open.volcengineapi.com"
-    volc_iam_endpoint: str = "https://iam.volcengineapi.com"
     volc_region: str = "cn-north-1"
     limiter_provider: str = "volc"
-    limiter_webhook_url: str = ""
-    limiter_webhook_token: str = ""
     alert_webhook_url: str = ""
     config_api_token: str = ""
 

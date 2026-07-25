@@ -25,10 +25,6 @@ subsidiaries:
         amount: "150000.00"
     control:
       stop_endpoints_on_block: true
-      disable_iam_access_keys_on_block: false
-      iam_user_name: ""
-      iam_access_key_ids: []
-      block_gateway_on_block: false
     throttle_rps: 2
     throttle_concurrency: 1
     enabled: true
@@ -46,7 +42,7 @@ subsidiaries:
 domain/models.py       子公司预算与状态模型
 adapters/billing.py    火山分账字段适配
 adapters/volc.py       火山 OpenAPI 签名与请求
-adapters/limiter.py    Endpoint / IAM 自动管控
+adapters/limiter.py    Endpoint 自动管控
 services/budgets.py    子公司配置、周期窗口与阈值
 services/poller.py     Project 汇总和限流编排
 api/main.py            轮询与事件查询接口
@@ -112,27 +108,7 @@ VOLC_REGION=cn-beijing
 
 在配置网页或 `config/budgets.yaml` 中设置 `throttle_rps`、`throttle_concurrency`，并开启 `stop_endpoints_on_block`。达到 `throttled` 后，系统会按 `ProjectName` 设置普通和预置推理接入点的 RPM/并发数；达到 `blocked` 后将两者设为 0；预算解除后恢复原限额。字段名 `stop_endpoints_on_block` 为兼容旧配置保留，实际不再停止接入点。
 
-需要同时限制 IAM 子账号时，再开启 `disable_iam_access_keys_on_block`，填写 IAM 用户名和 Access Key ID。这里只保存子账号 AK，不保存子账号 SK。主账号需要具有方舟 Endpoint 管理权限，以及启用 IAM 管控时所需的 Access Key 查询和状态更新权限。
-
 确认演练日志和项目映射无误后，将 `DRY_RUN=false` 并重启服务，才会执行真实限流和恢复。
-
-### 方舟调用网关
-
-普通方舟 API Key 没有公开的禁用 OpenAPI。需要实时止损时，不要把方舟 API Key 交给子公司；由自有网关保存方舟 API Key，并给每个子公司签发独立网关令牌。
-
-```env
-LIMITER_PROVIDER=volc
-LIMITER_WEBHOOK_URL=https://gateway.example.com/internal/projects/{project_id}/access
-LIMITER_WEBHOOK_TOKEN=replace-with-a-strong-token
-```
-
-网关接收 `PUT` JSON：
-
-```json
-{"state": "blocked", "rps": 0}
-```
-
-`state` 为 `normal`、`throttled` 或 `blocked`，项目由 URL 中的 `{project_id}` 指定。开启 `block_gateway_on_block` 后，预算超额会自动封禁该 Project，恢复预算时重新放行；页面也支持手动操作。`DRY_RUN=true` 时只记录预计动作。
 
 ## 生产增强
 

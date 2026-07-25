@@ -167,7 +167,7 @@
     .project-metric { padding: 14px; border-radius: 11px; background: var(--panel); border: 1px solid var(--line); }
     .project-metric span { display: block; color: var(--muted); font-size: 12px; }
     .project-metric strong { display: block; margin-top: 6px; font-size: 20px; }
-    .control-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .control-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
     .control-card { padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: #fafaf6; }
     .control-card p { min-height: 20px; margin: 7px 0 12px; color: var(--muted); font-size: 13px; }
     .control-actions { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -333,22 +333,6 @@
                   <button class="btn btn-ghost" type="button" id="startEndpointsNow">开启普通节点</button>
                 </div>
               </div>
-              <div class="control-card">
-                <strong>IAM Access Key</strong>
-                <p id="iamStatus">请先配置 IAM 用户名和 AK</p>
-                <div class="control-actions">
-                  <button class="btn btn-danger" type="button" id="disableIamNow">全部禁用</button>
-                  <button class="btn btn-ghost" type="button" id="enableIamNow">全部启用</button>
-                </div>
-              </div>
-              <div class="control-card">
-                <strong>方舟调用网关</strong>
-                <p id="gatewayStatus">请先配置 LIMITER_WEBHOOK_URL</p>
-                <div class="control-actions">
-                  <button class="btn btn-danger" type="button" id="blockGatewayNow">封禁此项目</button>
-                  <button class="btn btn-ghost" type="button" id="allowGatewayNow">恢复此项目</button>
-                </div>
-              </div>
             </div>
             <span class="hint" id="controlMode"></span>
           </section>
@@ -409,23 +393,6 @@
               <div class="field">
                 <label for="stopEndpoints">封锁时将推理接入点限流为 0</label>
                 <select id="stopEndpoints"><option value="true">启用</option><option value="false">关闭</option></select>
-              </div>
-              <div class="field">
-                <label for="disableIamKeys">同时禁用 IAM Access Key</label>
-                <select id="disableIamKeys"><option value="false">关闭</option><option value="true">启用</option></select>
-              </div>
-              <div class="field">
-                <label for="iamUserName">IAM 用户名</label>
-                <input id="iamUserName" placeholder="subcompanyA_user">
-              </div>
-              <div class="field">
-                <label for="iamAccessKeys">IAM Access Key ID</label>
-                <textarea id="iamAccessKeys" placeholder="每行一个 AKLT...；不填写 Secret Access Key"></textarea>
-              </div>
-              <div class="field">
-                <label for="blockGateway">同时封禁方舟调用网关</label>
-                <select id="blockGateway"><option value="false">关闭</option><option value="true">启用</option></select>
-                <span class="hint">子公司必须使用网关令牌，不能直接持有方舟 API Key</span>
               </div>
             </div>
           </section>
@@ -583,8 +550,7 @@
     }
     const controlButtonIds = [
       "blockAllEndpointsNow", "restoreAllLimitsNow", "throttleEndpointsNow",
-      "throttlePresetEndpointsNow", "throttleAllEndpointsNow", "stopEndpointsNow", "startEndpointsNow",
-      "disableIamNow", "enableIamNow", "blockGatewayNow", "allowGatewayNow"
+      "throttlePresetEndpointsNow", "throttleAllEndpointsNow", "stopEndpointsNow", "startEndpointsNow"
     ];
     function setControlBusy(busy) {
       for (const id of controlButtonIds) $(id).disabled = busy;
@@ -608,23 +574,9 @@
       $("stopEndpointsNow").disabled = running === 0;
       $("startEndpointsNow").disabled = stopped === 0;
 
-      const keys = status.access_keys || [];
-      const active = keys.filter(item => String(item.status).toLowerCase() === "active").length;
-      const inactive = keys.filter(item => String(item.status).toLowerCase() === "inactive").length;
-      $("iamStatus").textContent = keys.length
-        ? `${keys.length} 个 · ${active} 启用 · ${inactive} 禁用`
-        : "未配置 IAM 用户名和 Access Key ID";
-      $("disableIamNow").disabled = active === 0;
-      $("enableIamNow").disabled = inactive === 0;
-      const gateway = status.gateway || {};
-      $("gatewayStatus").textContent = gateway.configured
-        ? `项目 ${gateway.project} · 网关已配置`
-        : "未配置 LIMITER_WEBHOOK_URL";
-      $("blockGatewayNow").disabled = !gateway.configured;
-      $("allowGatewayNow").disabled = !gateway.configured;
       $("controlMode").textContent = status.dry_run
-        ? "当前为 DRY_RUN 演练模式，按钮不会实际修改资源或网关。"
-        : "当前为实时控制模式，操作会立即提交到火山引擎或调用网关。";
+        ? "当前为 DRY_RUN 演练模式，按钮不会实际修改接入点。"
+        : "当前为实时控制模式，操作会立即提交到火山引擎。";
     }
     async function loadControlStatus(silent = false) {
       if (!$("token").value || !selectedId) return;
@@ -639,21 +591,13 @@
       } catch (error) {
         if (requestedId === selectedId) {
           $("endpointStatus").textContent = "状态读取失败";
-          $("iamStatus").textContent = "状态读取失败";
-          $("gatewayStatus").textContent = "状态读取失败";
           if (!silent) notify(error.message, true);
         }
       }
     }
     async function manualControl(resource, enabled) {
       if (dirty) return notify("请先保存配置，再执行资源控制", true);
-      const target = resource === "all"
-        ? "该子公司的 IAM Access Key、推理接入点和方舟调用网关"
-        : resource === "endpoints"
-          ? "Project 下全部推理接入点"
-          : resource === "gateway"
-            ? "该 Project 的方舟网关调用"
-            : "已配置的 IAM Access Key";
+      const target = "Project 下普通推理接入点";
       const action = enabled ? "启用" : "禁用";
       if (!confirm(`确认${action}${target}？`)) return;
       setControlBusy(true);
@@ -750,10 +694,6 @@
       setValue("throttleRatio", item.throttle_ratio ?? "0.95");
       setValue("blockRatio", item.block_ratio ?? "1.00");
       setValue("stopEndpoints", String(item.control?.stop_endpoints_on_block ?? true));
-      setValue("disableIamKeys", String(item.control?.disable_iam_access_keys_on_block ?? false));
-      setValue("iamUserName", item.control?.iam_user_name);
-      setValue("iamAccessKeys", (item.control?.iam_access_key_ids || []).join("\n"));
-      setValue("blockGateway", String(item.control?.block_gateway_on_block ?? false));
       for (const period of periodIds) {
         const budget = period === "total" ? item.budgets?.total || item.budgets?.lifetime : item.budgets?.[period];
         setValue(period, budget?.amount);
@@ -761,8 +701,6 @@
       $("enabled").checked = item.enabled !== false;
       renderProjectDashboard();
       $("endpointStatus").textContent = "正在读取状态…";
-      $("iamStatus").textContent = "正在读取状态…";
-      $("gatewayStatus").textContent = "正在读取状态…";
       $("controlMode").textContent = "";
       setControlBusy(true);
       dirty = false;
@@ -793,11 +731,7 @@
         block_ratio: $("blockRatio").value,
         budgets,
         control: {
-          stop_endpoints_on_block: $("stopEndpoints").value === "true",
-          disable_iam_access_keys_on_block: $("disableIamKeys").value === "true",
-          iam_user_name: $("iamUserName").value.trim(),
-          iam_access_key_ids: $("iamAccessKeys").value.split(/\s+/).filter(Boolean),
-          block_gateway_on_block: $("blockGateway").value === "true"
+          stop_endpoints_on_block: $("stopEndpoints").value === "true"
         },
         throttle_rps: Number($("throttleRps").value),
         throttle_concurrency: Number($("throttleConcurrency").value),
@@ -890,10 +824,6 @@
     $("restoreAllLimitsNow").addEventListener("click", () => manualLimit("all", "restore"));
     $("stopEndpointsNow").addEventListener("click", () => manualControl("endpoints", false));
     $("startEndpointsNow").addEventListener("click", () => manualControl("endpoints", true));
-    $("disableIamNow").addEventListener("click", () => manualControl("iam", false));
-    $("enableIamNow").addEventListener("click", () => manualControl("iam", true));
-    $("blockGatewayNow").addEventListener("click", () => manualControl("gateway", false));
-    $("allowGatewayNow").addEventListener("click", () => manualControl("gateway", true));
     $("reload").addEventListener("click", loadConfig);
     $("add").addEventListener("click", () => {
       try {
@@ -906,9 +836,7 @@
           warning_ratio: "0.80", throttle_ratio: "0.95", block_ratio: "1.00",
           budgets: { monthly: { amount: "10000.00" } },
           control: {
-            stop_endpoints_on_block: true,
-            disable_iam_access_keys_on_block: false,
-            block_gateway_on_block: false
+            stop_endpoints_on_block: true
           },
           throttle_rps: 1, throttle_concurrency: 1, enabled: true
         };
